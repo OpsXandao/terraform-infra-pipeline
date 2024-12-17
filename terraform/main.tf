@@ -31,4 +31,26 @@ module "ecs" {
   container_image    = "03021914/blue-green:v1"
   container_port     = 8080
   desired_count      = 2
+  
+  ec2_ami_id         = "ami-01816d07b1128cd2d"
+  task_memory        = 512  
+  task_cpu           = 1 
 }
+
+module "s3_bucket" {
+  source      = "./s3"
+  bucket_name = "alexandre-us-east-1-terraform-statefile"
+  environment = "dev"
+}
+
+module "dynamodb_table" {
+  source     = "./dynamo"   # Caminho para o módulo
+  table_name = "alexandre-us-east-1-terraform-lock"
+  environment = "dev"
+}
+
+output "dynamodb_table_name" {
+  value = module.dynamodb_table.table_name
+}
+
+
