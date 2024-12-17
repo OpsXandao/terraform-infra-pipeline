@@ -1,0 +1,5 @@
+# Ignorar o arquivo .terraform.lock.hcl
+terraform/.terraform.lock.hcl
+
+# Ignorar a pasta .terraform dentro da pasta terraform
+terraform/.terraform/
