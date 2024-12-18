@@ -43,8 +43,8 @@
             aws-region: ${{ inputs.aws-region }}
 
         - name: Terraform Init
-          env:
-            REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          # env:
+          #   REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
           run: |
             cd terraform && terraform init \
               -backend-config="bucket=${{ inputs.aws-statefile-s3-bucket }}" \
