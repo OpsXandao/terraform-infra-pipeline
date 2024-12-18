@@ -14,7 +14,7 @@ provider "aws" {
 
 # VPC Module
 module "vpc" {
-  source          = "git::https://github.com/OpsXandao/modules-terraform.git//terraform/vpc?ref=main"
+  source          = "git::https://${var.repo_access_token}@github.com/OpsXandao/modules-terraform.git//terraform/vpc?ref=main"
   name            = "vpc-standard"
   cidr_block      = var.cidr_block
   public_subnets  = var.public_subnets
@@ -22,6 +22,7 @@ module "vpc" {
   azs             = var.azs
   nat_gateway     = var.nat_gateway
 }
+
 module "ecs" {
   source             = "./ecs"
   vpc_id             = module.vpc.vpc_id
