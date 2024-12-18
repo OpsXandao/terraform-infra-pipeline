@@ -1,3 +1,43 @@
+# IAM Role para ECS Task
+resource "aws_iam_role" "ecs_task_role" {
+  name = "${var.cluster_name}-ecs-task-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action    = "sts:AssumeRole"
+        Effect    = "Allow"
+        Principal = {
+          Service = "ecs.amazonaws.com"
+        }
+      },
+    ]
+  })
+}
+
+# Política para o ECS Task Role (ajustado para remover S3 e DynamoDB)
+resource "aws_iam_policy" "ecs_task_policy" {
+  name        = "${var.cluster_name}-ecs-task-policy"
+  description = "Policy for ECS Task Role"
+  policy      = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]  # Mantido apenas permissões de logs
+        Effect   = "Allow"
+        Resource = "*"
+      },
+    ]
+  })
+}
+
+# Associando a política ao Role
+resource "aws_iam_role_policy_attachment" "ecs_task_role_policy_attachment" {
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = aws_iam_policy.ecs_task_policy.arn
+}
+
 # Cluster ECS
 resource "aws_ecs_cluster" "this" {
   name = var.cluster_name
@@ -65,22 +105,35 @@ resource "aws_lb" "this" {
   subnets            = var.public_subnet_ids
 }
 
-# Target Group
+# Target Group (alterado para "ip", compatível com o modo awsvpc)
 resource "aws_lb_target_group" "this" {
   name        = "${var.cluster_name}-tg"
   port        = var.container_port
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
-  target_type = "ip"
+  target_type = "ip"  # Alterado para "ip", compatível com o modo awsvpc
 }
 
-# Task Definition para EC2
+# Listener para Load Balancer
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.this.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.this.arn
+  }
+}
+
+# Task Definition para EC2 (modo awsvpc agora)
 resource "aws_ecs_task_definition" "this" {
   family                   = "${var.cluster_name}-task"
-  network_mode             = "bridge" # Compatível com EC2
-  requires_compatibilities = ["EC2"] # Suporte apenas para EC2
+  network_mode             = "awsvpc"  # Agora utilizando o modo awsvpc
+  requires_compatibilities = ["EC2"]    # Suporte para EC2
   cpu                      = var.task_cpu
   memory                   = var.task_memory
+  task_role_arn            = aws_iam_role.ecs_task_role.arn  # Referenciando o role criado
 
   container_definitions = jsonencode([{
     name  = "my-container"

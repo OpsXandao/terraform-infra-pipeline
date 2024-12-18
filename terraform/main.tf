@@ -30,8 +30,8 @@ module "ecs" {
   private_subnet_ids = module.vpc.private_subnet_ids
   cluster_name       = "blue-green-clust"
   container_image    = "03021914/blue-green:v1"
-  container_port     = 8080
-  desired_count      = 2
+  container_port     = 5000
+  desired_count      = 1
   
   ec2_ami_id         = "ami-01816d07b1128cd2d"
   task_memory        = 2048  # A memória agora é compatível com 1 vCPU (1024)
