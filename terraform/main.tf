@@ -22,6 +22,7 @@ module "vpc" {
   azs             = var.azs
   nat_gateway     = var.nat_gateway
 }
+
 module "ecs" {
   source             = "./ecs"
   vpc_id             = module.vpc.vpc_id
@@ -33,24 +34,6 @@ module "ecs" {
   desired_count      = 2
   
   ec2_ami_id         = "ami-01816d07b1128cd2d"
-  task_memory        = 512  
-  task_cpu           = 1 
+  task_memory        = 2048  # A memória agora é compatível com 1 vCPU (1024)
+  task_cpu           = 1024  # 1 vCPU
 }
-
-# module "s3_bucket" {
-#   source      = "./s3"
-#   bucket_name = "alexandre-us-east-1-terraform-statefile"
-#   environment = "dev"
-# }
-
-# module "dynamodb_table" {
-#   source     = "./dynamo"   # Caminho para o módulo
-#   table_name = "alexandre-us-east-1-terraform-lock"
-#   environment = "dev"
-# }
-
-# output "dynamodb_table_name" {
-#   value = module.dynamodb_table.table_name
-# }
-
-
