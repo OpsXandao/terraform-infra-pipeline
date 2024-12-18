@@ -16,7 +16,6 @@ jobs:
     defaults:
       run:
         shell: bash
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,3 +48,8 @@ jobs:
         id: terraform-apply
         run: |
           cd terraform && terraform apply "plan.out"
+
+      - name: Terraform Destroy (Always Run)
+        if: always()  # Isso garante que o comando será executado independentemente do sucesso ou falha dos passos anteriores
+        run: |
+          cd terraform && terraform destroy -auto-approve
