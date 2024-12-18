@@ -37,20 +37,20 @@ module "ecs" {
   task_cpu           = 1 
 }
 
-module "s3_bucket" {
-  source      = "./s3"
-  bucket_name = "alexandre-us-east-1-terraform-statefile"
-  environment = "dev"
-}
+# module "s3_bucket" {
+#   source      = "./s3"
+#   bucket_name = "alexandre-us-east-1-terraform-statefile"
+#   environment = "dev"
+# }
 
-module "dynamodb_table" {
-  source     = "./dynamo"   # Caminho para o módulo
-  table_name = "alexandre-us-east-1-terraform-lock"
-  environment = "dev"
-}
+# module "dynamodb_table" {
+#   source     = "./dynamo"   # Caminho para o módulo
+#   table_name = "alexandre-us-east-1-terraform-lock"
+#   environment = "dev"
+# }
 
-output "dynamodb_table_name" {
-  value = module.dynamodb_table.table_name
-}
+# output "dynamodb_table_name" {
+#   value = module.dynamodb_table.table_name
+# }
 
 
