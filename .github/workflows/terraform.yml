@@ -20,6 +20,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        
+      - name: Access another repository
+        env:
+          PAT: ${{ secrets.ACCESS_TOKEN }}
+        run: |
+          git clone https://OpsXandao:${PAT}@github.com/OpsXandao/modules-terraform.git
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
