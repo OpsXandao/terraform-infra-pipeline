@@ -27,7 +27,7 @@ module "ecs" {
   vpc_id             = module.vpc.vpc_id
   public_subnet_ids  = module.vpc.public_subnet_ids
   private_subnet_ids = module.vpc.private_subnet_ids
-  cluster_name       = "blue-green-cluster"
+  cluster_name       = "blue-green-clust"
   container_image    = "03021914/blue-green:v1"
   container_port     = 8080
   desired_count      = 2
