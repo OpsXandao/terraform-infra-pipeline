@@ -1,6 +1,6 @@
 # IAM Role para ECS Task
 resource "aws_iam_role" "ecs_task_role" {
-  name = "${var.cluster_name}-ecs-task-role"
+  name = "${var.cluster_name}-ecs-task-role-v"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -18,7 +18,7 @@ resource "aws_iam_role" "ecs_task_role" {
 
 # Política para o ECS Task Role (ajustado para remover S3 e DynamoDB)
 resource "aws_iam_policy" "ecs_task_policy" {
-  name        = "${var.cluster_name}-ecs-task-policy"
+  name        = "${var.cluster_name}-ecs-task-policy-v"
   description = "Policy for ECS Task Role"
   policy      = jsonencode({
     Version = "2012-10-17"
@@ -45,7 +45,7 @@ resource "aws_ecs_cluster" "this" {
 
 # Launch Template para instâncias EC2
 resource "aws_launch_template" "ecs" {
-  name          = "${var.cluster_name}-launch-template"
+  name          = "${var.cluster_name}-launch-template-v"
   image_id      = var.ec2_ami_id # AMI ECS-optimized
   instance_type = var.ec2_instance_type
 
