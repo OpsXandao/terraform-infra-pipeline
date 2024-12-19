@@ -46,14 +46,10 @@ resource "aws_ecs_cluster" "this" {
 # Launch Template para instâncias EC2
 resource "aws_launch_template" "ecs" {
   name          = "${var.cluster_name}-launch-template-v"
-  image_id      = var.ec2_ami_id # AMI ECS-optimized
+  image_id      = var.ec2_ami_id
   instance_type = var.ec2_instance_type
 
-  user_data = base64encode(<<-EOT
-    #!/bin/bash
-    echo ECS_CLUSTER=${aws_ecs_cluster.this.name} >> /etc/ecs/ecs.config
-  EOT
-  )
+  user_data = base64encode(file("${path.module}/../scripts/docker_install.sh"))
 
   network_interfaces {
     security_groups            = [aws_security_group.ecs_service.id]

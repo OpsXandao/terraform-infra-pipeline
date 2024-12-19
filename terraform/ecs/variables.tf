@@ -59,7 +59,7 @@ variable "ec2_ami_id" {
 variable "ec2_instance_type" {
   description = "Tipo da instância EC2"
   type        = string
-  default     = "t3.micro"
+  default     = "t3.medium"
 }
 
 variable "ec2_desired_capacity" {
