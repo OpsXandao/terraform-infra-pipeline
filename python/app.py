@@ -14,6 +14,7 @@ def index():
         </head>
         <body style="background-color: green; color: white; text-align: center; padding: 50px;">
             <h1>A cor de fundo é: {color}</h1>
+            <h2>Servidor que processou a requisição: {server}</h2>
         </body>
     </html>
     """
