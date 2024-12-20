@@ -1,81 +1,49 @@
-
-# Variáveis Necessárias
-variable "vpc_id" {
-  description = "ID da VPC"
+variable "region" {
+  description = "Região AWS para criar os recursos"
   type        = string
+  default     = "us-east-1"
 }
 
-variable "public_subnet_ids" {
-  description = "IDs das Subnets públicas"
-  type        = list(string)
-}
-
-variable "private_subnet_ids" {
-  description = "IDs das Subnets privadas"
-  type        = list(string)
-}
-
-variable "cluster_name" {
-  description = "Nome do cluster ECS"
+variable "image_name" {
+  description = "Nome da imagem Docker para a task definition"
   type        = string
-}
-
-variable "container_image" {
-  description = "Imagem Docker para o container"
-  type        = string
+  default     = "03021914/blue-green:v1"
 }
 
 variable "container_port" {
-  description = "Porta exposta pelo container"
+  description = "Porta do contêiner para expor"
   type        = number
-}
-
-variable "container_environment" {
-  description = "Variáveis de ambiente para o container"
-  type        = list(map(string))
-  default     = []
-}
-
-variable "task_cpu" {
-  description = "CPU para a task ECS"
-  type        = number
-}
-
-variable "task_memory" {
-  description = "Memória para a task ECS"
-  type        = number
+  default     = 5000
 }
 
 variable "desired_count" {
-  description = "Número desejado de instâncias do serviço ECS"
-  type        = number
-}
-
-variable "ec2_ami_id" {
-  description = "AMI para as instâncias ECS (otimizada para ECS)"
-  type        = string
-}
-
-variable "ec2_instance_type" {
-  description = "Tipo da instância EC2"
-  type        = string
-  default     = "t3.medium"
-}
-
-variable "ec2_desired_capacity" {
-  description = "Capacidade desejada do Auto Scaling Group"
-  type        = number
-  default     = 2
-}
-
-variable "ec2_min_capacity" {
-  description = "Capacidade mínima do Auto Scaling Group"
+  description = "Número desejado de tarefas no ECS Service"
   type        = number
   default     = 1
 }
 
-variable "ec2_max_capacity" {
-  description = "Capacidade máxima do Auto Scaling Group"
-  type        = number
-  default     = 5
+variable "vpc_id" {
+  description = "ID do VPC onde o ECS será criado"
+  type        = string
+}
+
+variable "subnets" {
+  description = "Lista de subnets para o ECS Service"
+  type        = list(string)
+}
+
+variable "image_ecs" {
+  description = "The AMI from which to launch the instance."
+  type        = string
+  default     = "amzn2-ami-ecs-hvm-2.0.202*-x86_64-ebs*"
+}
+
+variable "owner" {
+  description = "Owner ami"
+  type        = any
+  default     = "amazon"
+}
+
+variable "container_name" {
+  type = string
 }

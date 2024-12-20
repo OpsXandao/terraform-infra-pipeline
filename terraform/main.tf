@@ -24,25 +24,23 @@ module "vpc" {
   nat_gateway     = var.nat_gateway
 }
 
-# module "ecs" {
-#   source             = "./ecs"
+module "ecs" {
+  source         = "./ecs"
+  region         = var.aws_region
+  cluster_name   = "colours-cluster"
+  image_name     = "03021914/blue-green:v1"
+  container_name = "blue-green-app" # Adicione este argumento
+  container_port = 5000
+  desired_count  = 1
+  vpc_id         = module.vpc.vpc_id
+  subnets        = module.vpc.public_subnet_ids
+}
+
+
+# module "ec2_test" {
+#   source             = "./ec2"
 #   vpc_id             = module.vpc.vpc_id
 #   public_subnet_ids  = module.vpc.public_subnet_ids
-#   private_subnet_ids = module.vpc.private_subnet_ids
-#   cluster_name       = "blue-green-cluster"
-#   container_image    = "03021914/blue-green:v2.1"
-#   container_port     = 5000
-#   desired_count      = 1
-  
-#   ec2_ami_id         = "ami-01816d07b1128cd2d"
-#   task_memory        = 2048  # A memória agora é compatível com 1 vCPU (1024)
-#   task_cpu           = 1024  # 1 vCPU
+#   ami_id             = "ami-0e2c8caa4b6378d8c"
+#   instance_type      = "t3.medium"
 # }
-
-module "ec2_test" {
-  source             = "./ec2"
-  vpc_id             = module.vpc.vpc_id
-  public_subnet_ids  = module.vpc.public_subnet_ids
-  ami_id             = "ami-0e2c8caa4b6378d8c"
-  instance_type      = "t3.medium"
-}

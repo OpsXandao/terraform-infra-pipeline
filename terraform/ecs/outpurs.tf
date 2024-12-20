@@ -1,14 +1,18 @@
 output "ecs_cluster_id" {
-  description = "ID do cluster ECS"
-  value       = aws_ecs_cluster.this.id
+  description = "ID do cluster ECS criado"
+  value       = aws_ecs_cluster.blue_green_cluster.id
 }
 
 output "ecs_service_name" {
-  description = "Nome do serviço ECS"
-  value       = aws_ecs_service.this.name
+  description = "Nome do serviço ECS criado"
+  value       = aws_ecs_service.blue_green_service.name
 }
 
-output "load_balancer_dns_name" {
-  description = "DNS do Load Balancer"
-  value       = aws_lb.this.dns_name
+output "task_definition_arn" {
+  description = "ARN da task definition do ECS"
+  value       = aws_ecs_task_definition.blue_green_task.arn
+}
+
+variable "cluster_name" {
+  type = string
 }

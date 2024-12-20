@@ -20,4 +20,4 @@ sudo apt install -y docker-ce
 # Baixar a imagem do container
 sudo docker pull 03021914/blue-green:v1
 
-sudo docker run -d -p 5000:5000 --name blue-green-container 03021914/blue-green:v1S
+sudo docker run -d -p 5000:5000 --name blue-green-container 03021914/blue-green:v1

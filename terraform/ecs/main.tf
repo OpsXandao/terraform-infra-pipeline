@@ -1,85 +1,43 @@
-# IAM Role para ECS Task
-resource "aws_iam_role" "ecs_task_role" {
-  name = "${var.cluster_name}-ecs-task-role-v"
+data "aws_ami" "default" {
+  filter {
+    name   = "name"
+    values = ["${var.image_ecs}"]
+  }
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action    = "sts:AssumeRole"
-        Effect    = "Allow"
-        Principal = {
-          Service = "ecs.amazonaws.com"
-        }
-      },
-    ]
-  })
+  most_recent = true
+  owners      = ["${var.owner}"]
 }
 
-# Política para o ECS Task Role (ajustado para remover S3 e DynamoDB)
-resource "aws_iam_policy" "ecs_task_policy" {
-  name        = "${var.cluster_name}-ecs-task-policy-v"
-  description = "Policy for ECS Task Role"
-  policy      = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]  # Mantido apenas permissões de logs
-        Effect   = "Allow"
-        Resource = "*"
-      },
-    ]
-  })
+# Chave SSH
+resource "aws_key_pair" "this" {
+  key_name   = "terraformed-key"
+  public_key = file("/home/elvenworks24/.ssh/id_rsa.pub")
+
+  tags = {
+    Name = "terraformed-key"
+  }
 }
 
-# Associando a política ao Role
-resource "aws_iam_role_policy_attachment" "ecs_task_role_policy_attachment" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = aws_iam_policy.ecs_task_policy.arn
-}
 
-# Cluster ECS
-resource "aws_ecs_cluster" "this" {
+resource "aws_ecs_cluster" "blue_green_cluster" {
   name = var.cluster_name
 }
 
-# Launch Template para instâncias EC2
-resource "aws_launch_template" "ecs" {
-  name          = "${var.cluster_name}-launch-template-v"
-  image_id      = var.ec2_ami_id
-  instance_type = var.ec2_instance_type
-
-  user_data = base64encode(file("${path.module}/../scripts/docker_install.sh"))
-
-  network_interfaces {
-    security_groups            = [aws_security_group.ecs_service.id]
-    associate_public_ip_address = true
-  }
-}
-
-# Auto Scaling Group para ECS
-resource "aws_autoscaling_group" "ecs" {
-  desired_capacity     = var.ec2_desired_capacity
-  max_size             = var.ec2_max_capacity
-  min_size             = var.ec2_min_capacity
-
-  launch_template {
-    id      = aws_launch_template.ecs.id
-    version = "$Latest"
-  }
-
-  vpc_zone_identifier = var.private_subnet_ids
-}
-
-# Security Group para o ECS Service
-resource "aws_security_group" "ecs_service" {
-  name        = "${var.cluster_name}-sg"
-  description = "Security group for ECS service"
+# Security Group para permitir tráfego na porta 5000
+resource "aws_security_group" "ecs_sg" {
+  name_prefix = "ecs-sg"
   vpc_id      = var.vpc_id
 
   ingress {
     from_port   = var.container_port
     to_port     = var.container_port
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -92,78 +50,95 @@ resource "aws_security_group" "ecs_service" {
   }
 }
 
-# Load Balancer para ECS
-resource "aws_lb" "this" {
-  name               = "${var.cluster_name}-lb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.ecs_service.id]
-  subnets            = var.public_subnet_ids
+# ECS Task Definition
+resource "aws_ecs_task_definition" "blue_green_task" {
+  family = "blue-green-task"
+  container_definitions = jsonencode([
+    {
+      name      = var.container_name,
+      image     = var.image_name,
+      cpu       = 256,
+      memory    = 512,
+      essential = true,
+      portMappings = [
+        {
+          containerPort = 5000,
+          hostPort      = 5000,
+          protocol      = "tcp"
+        },
+      ],
+    },
+  ])
+  requires_compatibilities = ["EC2"]
+  network_mode             = "awsvpc"
 }
 
-# Target Group (alterado para "ip", compatível com o modo awsvpc)
-resource "aws_lb_target_group" "this" {
-  name        = "${var.cluster_name}-tg"
-  port        = var.container_port
-  protocol    = "HTTP"
-  vpc_id      = var.vpc_id
-  target_type = "ip"  # Alterado para "ip", compatível com o modo awsvpc
+# IAM Role para a instância EC2
+resource "aws_iam_role" "ecs_instance_role" {
+  name = "ecs-instance-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Effect = "Allow"
+        Sid    = ""
+      },
+    ]
+  })
 }
 
-# Listener para Load Balancer
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.this.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.this.arn
-  }
+# IAM Role Policy Attachment para permitir a ECS acessar os recursos necessários
+resource "aws_iam_role_policy_attachment" "ecs_instance_role_policy" {
+  role       = aws_iam_role.ecs_instance_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
 }
 
-# Task Definition para EC2 (modo awsvpc agora)
-resource "aws_ecs_task_definition" "this" {
-  family                   = "${var.cluster_name}-task"
-  network_mode             = "awsvpc"  # Agora utilizando o modo awsvpc
-  requires_compatibilities = ["EC2"]    # Suporte para EC2
-  cpu                      = var.task_cpu
-  memory                   = var.task_memory
-  task_role_arn            = aws_iam_role.ecs_task_role.arn  # Referenciando o role criado
-
-  container_definitions = jsonencode([{
-    name  = "my-container"
-    image = var.container_image
-    portMappings = [{
-      containerPort = var.container_port
-      protocol      = "tcp"
-    }]
-    environment = var.container_environment
-  }])
+# Criar o IAM Instance Profile para associar a Role à EC2
+resource "aws_iam_instance_profile" "ecs_instance_profile" {
+  name = "ecs-instance-profile"
+  role = aws_iam_role.ecs_instance_role.name
 }
 
-# Serviço ECS com deploy blue/green
-resource "aws_ecs_service" "this" {
-  cluster        = aws_ecs_cluster.this.id
-  name           = "${var.cluster_name}-service"
-  task_definition = aws_ecs_task_definition.this.arn
+# Launch Configuration para as instâncias EC2
+resource "aws_launch_configuration" "ecs_launch_config" {
+  name                 = "ecs-launch-config"
+  image_id             = data.aws_ami.default.id
+  instance_type        = "t3.micro"
+  iam_instance_profile = aws_iam_instance_profile.ecs_instance_profile.name
+  key_name             = aws_key_pair.this.key_name
+  security_groups      = [aws_security_group.ecs_sg.id]
+
+  user_data = base64encode(<<-EOF
+              #!/bin/bash
+              echo ECS_CLUSTER=${var.cluster_name} >> /etc/ecs/ecs.config
+              EOF
+  )
+}
+
+# Auto Scaling Group para gerenciar instâncias EC2 no ECS
+resource "aws_autoscaling_group" "ecs_asg" {
+  desired_capacity     = 1
+  max_size             = 2
+  min_size             = 1
+  vpc_zone_identifier  = var.subnets
+  launch_configuration = aws_launch_configuration.ecs_launch_config.id
+}
+
+# ECS Service
+resource "aws_ecs_service" "blue_green_service" {
+  name            = "blue-green-service"
+  cluster         = aws_ecs_cluster.blue_green_cluster.id
+  task_definition = aws_ecs_task_definition.blue_green_task.arn
   desired_count   = var.desired_count
-
-  deployment_controller {
-    type = "CODE_DEPLOY"
-  }
-
-  load_balancer {
-    target_group_arn = aws_lb_target_group.this.arn
-    container_name   = "my-container"
-    container_port   = var.container_port
-  }
+  launch_type     = "EC2"
 
   network_configuration {
-    subnets          = var.private_subnet_ids
-    security_groups  = [aws_security_group.ecs_service.id]
-    assign_public_ip = false
+    subnets         = var.subnets
+    security_groups = [aws_security_group.ecs_sg.id]
   }
-
-  enable_execute_command = true
 }
