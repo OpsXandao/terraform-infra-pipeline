@@ -8,22 +8,12 @@ data "aws_ami" "default" {
   owners      = ["${var.owner}"]
 }
 
-# Chave SSH
-resource "aws_key_pair" "this" {
-  key_name   = "terraformed-key"
-  public_key = file("/home/elvenworks24/.ssh/id_rsa.pub")
-
-  tags = {
-    Name = "terraformed-key"
-  }
-}
-
 
 resource "aws_ecs_cluster" "blue_green_cluster" {
   name = var.cluster_name
 }
 
-# Security Group para permitir tráfego na porta 5000
+# Security Group
 resource "aws_security_group" "ecs_sg" {
   name_prefix = "ecs-sg"
   vpc_id      = var.vpc_id
@@ -95,7 +85,7 @@ resource "aws_iam_role" "ecs_instance_role" {
 # IAM Role Policy Attachment para permitir a ECS acessar os recursos necessários
 resource "aws_iam_role_policy_attachment" "ecs_instance_role_policy" {
   role       = aws_iam_role.ecs_instance_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+  policy_arn = "arn:aws:iam::058264525554:role/ecsTaskExecutionRole"
 }
 
 # Criar o IAM Instance Profile para associar a Role à EC2
