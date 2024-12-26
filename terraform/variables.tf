@@ -49,4 +49,3 @@ variable "azs" {
 variable "repo_access_token" {
   default = ""
 }
-

@@ -14,7 +14,7 @@ provider "aws" {
 
 
 resource "aws_key_pair" "this" {
-  key_name   = "terraformed-key"
+  key_name   = "el-key"
   public_key = file("/home/elvenworks24/.ssh/id_rsa.pub")
 
   tags = {
@@ -34,20 +34,13 @@ module "vpc" {
   nat_gateway     = var.nat_gateway
 }
 
-# module "ecs" {
-#   source         = "./ecs"
-#   region         = var.aws_region
-#   cluster_name   = "colours-cluster"
-#   image_name     = "03021914/blue-green:v1"
-#   container_name = "blue-green-app" # Adicione este argumento
-#   container_port = 5000
-#   desired_count  = 1
-#   vpc_id         = module.vpc.vpc_id
-#   subnets        = module.vpc.public_subnet_ids
-# }
+ module "ecs" {
+  source = "./ecs"
+  cluster_name = "DevCluster"
+}
 
 
-# module "ec2_test" {
+# # module "ec2_test" {
 #   source             = "./ec2"
 #   vpc_id             = module.vpc.vpc_id
 #   public_subnet_ids  = module.vpc.public_subnet_ids
