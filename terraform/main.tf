@@ -13,14 +13,14 @@ provider "aws" {
 }
 
 
-resource "aws_key_pair" "this" {
-  key_name   = "terraformed-key"
-  public_key = file("/home/elvenworks24/.ssh/id_rsa.pub")
+# resource "aws_key_pair" "this" {
+#   key_name   = "terraformed-key"
+#   public_key = file("/home/elvenworks24/.ssh/id_rsa.pub")
 
-  tags = {
-    Name = "terraformed-key"
-  }
-}
+#   tags = {
+#     Name = "terraformed-key"
+#   }
+# }
 
 
 # VPC Module
