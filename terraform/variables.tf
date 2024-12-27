@@ -3,12 +3,6 @@ variable "aws_region" {
   default = "us-east-1"
 }
 
-variable "cidr_block" {
-  description = "Bloco CIDR da VPC"
-  type        = string
-  default     = "10.0.0.0/16"
-}
-
 variable "enable_dns_support" {
   description = "Habilitar suporte a DNS"
   type        = bool

@@ -14,7 +14,7 @@ provider "aws" {
 
 
 resource "aws_key_pair" "this" {
-  key_name   = "el-key"
+  key_name   = "terraformed-key"
   public_key = file("/home/elvenworks24/.ssh/id_rsa.pub")
 
   tags = {
@@ -27,17 +27,22 @@ resource "aws_key_pair" "this" {
 module "vpc" {
   source          = "git::https://github.com/OpsXandao/modules-terraform.git//terraform/vpc?ref=main"
   name            = "vpc-standard"
-  cidr_block      = var.cidr_block
+  cidr_block      = "10.0.0.0/16"
   public_subnets  = var.public_subnets
   private_subnets = var.private_subnets
   azs             = var.azs
   nat_gateway     = var.nat_gateway
 }
 
- module "ecs" {
-  source = "./ecs"
-  cluster_name = "DevCluster"
-}
+  module "ecs" {
+    source = "./ecs"
+    vpc_id = module.vpc.vpc_id
+    public_subnet_ids = module.vpc.public_subnet_ids
+    cluster_name = "DevCluster"
+    container_image = "fabricioveronez/web-color:blue"
+    cidr_block = module.vpc.cidr_block
+    key_name = aws_key_pair.this.id
+  }
 
 
 # # module "ec2_test" {
