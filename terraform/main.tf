@@ -41,7 +41,8 @@ module "vpc" {
     cluster_name = "DevCluster"
     container_image = "fabricioveronez/web-color:blue"
     cidr_block = module.vpc.cidr_block
-    key_name = aws_key_pair.this.id
+    
+    # key_name = aws_key_pair.this.id
   }
 
 

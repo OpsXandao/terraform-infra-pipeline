@@ -1,7 +1,7 @@
 # --- ECS Cluster ---
 
 resource "aws_ecs_cluster" "main" {
-  name = "demo-cluster"
+  name = var.cluster_name
 }
 
 # --- ECS Node Role ---
@@ -314,7 +314,5 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-output "alb_url" {
-  value = aws_lb.main.dns_name
-}
+
 
