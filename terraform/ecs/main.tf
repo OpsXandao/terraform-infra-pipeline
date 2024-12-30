@@ -239,14 +239,15 @@ resource "aws_ecs_service" "app" {
     field = "attribute:ecs.availability-zone"
   }
 
+  deployment_controller {
+    type = "CODE_DEPLOY"
+  }
+
   lifecycle {
     ignore_changes = [desired_count]
   }
-
-   depends_on = [aws_lb_target_group.app]
-
   load_balancer {
-    target_group_arn = aws_lb_target_group.app.arn
+    target_group_arn = aws_lb_target_group.blue.arn
     container_name   = "app"
     container_port   = 5000
   }
@@ -284,8 +285,27 @@ resource "aws_lb" "main" {
   security_groups    = [aws_security_group.http.id]
 }
 
-resource "aws_lb_target_group" "app" {
-  name_prefix = "app-"
+resource "aws_lb_target_group" "blue" {
+  name_prefix = "blue-"
+  vpc_id      = var.vpc_id
+  protocol    = "HTTP"
+  port        = 5000
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    path                = "/"
+    port                = 5000
+    matcher             = 200
+    interval            = 10
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+}
+
+resource "aws_lb_target_group" "green" {
+  name_prefix = "green-"
   vpc_id      = var.vpc_id
   protocol    = "HTTP"
   port        = 5000
@@ -310,9 +330,66 @@ resource "aws_lb_listener" "http" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.app.id
+    target_group_arn = aws_lb_target_group.blue.arn
   }
 }
 
 
+# --- IAM Code Deploy ---
 
+resource "aws_iam_role" "codedeploy_role" {
+  name_prefix        = "codedeploy-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "codedeploy.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "codedeploy_role_policy" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRoleForECS"
+  role       = aws_iam_role.codedeploy_role.name
+}
+
+# --- Code Deploy ---
+
+resource "aws_codedeploy_app" "ecs" {
+  name = "demo-ecs-codedeploy-app"
+  compute_platform = "ECS"
+}
+
+resource "aws_codedeploy_deployment_group" "ecs" {
+  app_name = aws_codedeploy_app.ecs.name
+  deployment_group_name = "demo-ecs-deployment-group"
+
+  service_role_arn = aws_iam_role.codedeploy_role.arn
+
+  deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
+
+  ecs_service {
+    cluster_name = aws_ecs_cluster.main.name
+    service_name = aws_ecs_service.app.name
+  }
+
+  load_balancer_info {
+    target_group_pair_info {
+      target_group {
+        name = aws_lb_target_group.blue.name
+      }
+
+      target_group {
+  name = aws_lb_target_group.green.name
+}
+
+
+      prod_traffic_route {
+        listener_arns = [aws_lb_listener.http.arn]
+      }
+    }
+  }
+}
