@@ -178,7 +178,7 @@ resource "aws_ecs_task_definition" "app" {
     name         = "app",
     image        = var.container_image,
     essential    = true,
-    portMappings = [{ containerPort = 80, hostPort = 80 }],
+    portMappings = [{ containerPort = 5000, hostPort = 5000 }],
 
     environment = [
       { name = "EXAMPLE", value = "example" }
@@ -248,7 +248,7 @@ resource "aws_ecs_service" "app" {
   load_balancer {
     target_group_arn = aws_lb_target_group.app.arn
     container_name   = "app"
-    container_port   = 80
+    container_port   = 5000
   }
 }
 
@@ -260,7 +260,7 @@ resource "aws_security_group" "http" {
   vpc_id      = var.vpc_id
 
   dynamic "ingress" {
-    for_each = [80, 443]
+    for_each = [80, 443,5000]
     content {
       protocol    = "tcp"
       from_port   = ingress.value
@@ -288,13 +288,13 @@ resource "aws_lb_target_group" "app" {
   name_prefix = "app-"
   vpc_id      = var.vpc_id
   protocol    = "HTTP"
-  port        = 80
+  port        = 5000
   target_type = "ip"
 
   health_check {
     enabled             = true
     path                = "/"
-    port                = 80
+    port                = 5000
     matcher             = 200
     interval            = 10
     timeout             = 5
@@ -305,7 +305,7 @@ resource "aws_lb_target_group" "app" {
 
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.id
-  port              = 80
+  port              = 5000
   protocol          = "HTTP"
 
   default_action {

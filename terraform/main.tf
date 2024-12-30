@@ -39,7 +39,7 @@ module "vpc" {
     vpc_id = module.vpc.vpc_id
     public_subnet_ids = module.vpc.public_subnet_ids
     cluster_name = "DevCluster"
-    container_image = "fabricioveronez/web-color:blue"
+    container_image = "03021914/blue-green:v1"
     cidr_block = module.vpc.cidr_block
     
     # key_name = aws_key_pair.this.id
