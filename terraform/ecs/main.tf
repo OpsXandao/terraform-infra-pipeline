@@ -399,54 +399,50 @@ resource "aws_iam_role_policy" "codedeploy_policy" {
 }
 
 resource "aws_iam_role_policy" "github_actions_additional" {
-  name_prefix = "github-actions-logs-cd-"
-  role        = "github-actions-OpsXandao-pipeline"
+ name_prefix = "github-actions-logs-cd-"
+ role        = "github-actions-OpsXandao-pipeline"
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogGroups",
-          "logs:DescribeLogStreams",
-          "logs:ListTagsForResource",
-          "logs:TagResource",
-          "logs:UntagResource",
-          "logs:DeleteLogGroup", 
-          "logs:ListTagsForResource", # Permissão adicionada
-          "codedeploy:ListTagsForResource", # Permissão adicionada
-          "codedeploy:GetApplication",
-          "codedeploy:CreateApplication",
-          "codedeploy:DeleteApplication",
-          "codedeploy:CreateDeploymentGroup",
-          "codedeploy:DeleteDeploymentGroup",
-          "codedeploy:GetDeploymentGroup"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
+ policy = jsonencode({
+   Version = "2012-10-17"
+   Statement = [
+     {
+       Effect = "Allow"
+       Action = [
+         "logs:CreateLogGroup",
+         "logs:CreateLogStream",
+         "logs:PutLogEvents",
+         "logs:DescribeLogGroups",
+         "logs:DescribeLogStreams",
+         "logs:ListTagsForResource",
+         "logs:TagResource", 
+         "logs:UntagResource",
+         "logs:DeleteLogGroup"
+       ]
+       Resource = [
+         "arn:aws:logs:*:*:log-group:/ecs/demo",
+         "arn:aws:logs:*:*:log-group:/ecs/demo:*"
+       ]
+     },
+     {
+       Effect = "Allow"
+       Action = [
+         "codedeploy:ListTagsForResource",
+         "codedeploy:GetApplication",
+         "codedeploy:CreateApplication", 
+         "codedeploy:DeleteApplication",
+         "codedeploy:CreateDeploymentGroup",
+         "codedeploy:DeleteDeploymentGroup",
+         "codedeploy:GetDeploymentGroup"
+       ]
+       Resource = "*"
+     }
+   ]
+ })
 
-  lifecycle {
-    create_before_destroy = true
-  }
+ lifecycle {
+   create_before_destroy = true
+ }
 }
-
-
-
-resource "aws_codedeploy_app" "example" {
-  name              = "demo-cd-app-${random_string.suffix.result}"
-  compute_platform   = "ECS"
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
 
 resource "aws_codedeploy_deployment_group" "example" {
   deployment_group_name  = "demo-cd-group-${random_string.suffix.result}"
