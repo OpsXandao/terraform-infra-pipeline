@@ -444,6 +444,12 @@ resource "aws_iam_role_policy" "github_actions_additional" {
  }
 }
 
+resource "aws_iam_role_policy_attachment" "github_actions_policy_attachment" {
+  role       = "github-actions-OpsXandao-pipeline"
+  policy_arn = aws_iam_role_policy.github_actions_additional.name
+}
+
+
 resource "aws_codedeploy_app" "example" {
   name             = "demo-cd-app-${random_string.suffix.result}"
   compute_platform = "ECS"
