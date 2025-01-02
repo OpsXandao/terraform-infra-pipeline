@@ -50,10 +50,10 @@ jobs:
         run: |
           cd terraform && terraform apply "plan.out"
 
-      - name: Update container image version
-        run: |
-          cd terraform
-          terraform apply -var="container_image=03021914/blue-green:v2" -auto-approve
+      # - name: Update container image version
+      #   run: |
+      #     cd terraform
+      #     terraform apply -var="container_image=03021914/blue-green:v2" -auto-approve
 
       - name: Always Destroy
         if: always() 
