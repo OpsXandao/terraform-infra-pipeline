@@ -160,8 +160,8 @@ resource "aws_iam_role_policy_attachment" "ecs_exec_role_policy" {
 # --- Cloud Watch Logs ---
 
 resource "aws_cloudwatch_log_group" "ecs" {
-  name              = "/ecs/demo"
-  retention_in_days = 30
+  name              = "/ecs/demo2"
+  retention_in_days = 14
 
   lifecycle {
     ignore_changes = [name]
