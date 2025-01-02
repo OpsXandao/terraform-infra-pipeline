@@ -349,14 +349,18 @@ data "aws_iam_policy_document" "codedeploy_assume_role" {
 }
 
 resource "aws_iam_role" "codedeploy" {
-  name               = "codedeploy-service-role"
+  name_prefix        = "codedeploy-service-role-"
   assume_role_policy = data.aws_iam_policy_document.codedeploy_assume_role.json
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Política personalizada para CodeDeploy ECS
 resource "aws_iam_role_policy" "codedeploy_policy" {
-  name = "codedeploy-ecs-policy"
-  role = aws_iam_role.codedeploy.id
+  name_prefix = "codedeploy-ecs-policy-"
+  role        = aws_iam_role.codedeploy.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -383,12 +387,16 @@ resource "aws_iam_role_policy" "codedeploy_policy" {
       }
     ]
   })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Política adicional para GitHub Actions
 resource "aws_iam_role_policy" "github_actions_additional" {
-  name = "github-actions-logs-codedeploy-policy"
-  role = "github-actions-OpsXandao-pipeline"  # Nome da role existente
+  name_prefix = "github-actions-logs-cd-"
+  role        = "github-actions-OpsXandao-pipeline"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -412,18 +420,25 @@ resource "aws_iam_role_policy" "github_actions_additional" {
       }
     ]
   })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
-# Resto do código permanece igual
 resource "aws_codedeploy_app" "example" {
+  name_prefix      = "demo-cd-app-"
   compute_platform = "ECS"
-  name             = "demo-cd-app"
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_codedeploy_deployment_group" "example" {
-  app_name               = aws_codedeploy_app.example.name
+  deployment_group_name  = "demo-cd-group-${random_string.suffix.result}"
+  app_name              = aws_codedeploy_app.example.name
   deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
-  deployment_group_name  = "example"
   service_role_arn      = aws_iam_role.codedeploy.arn
 
   auto_rollback_configuration {
@@ -467,4 +482,14 @@ resource "aws_codedeploy_deployment_group" "example" {
       }
     }
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "random_string" "suffix" {
+  length  = 8
+  special = false
+  upper   = false
 }
