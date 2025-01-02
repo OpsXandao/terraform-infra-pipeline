@@ -407,6 +407,7 @@ resource "aws_iam_role_policy" "github_actions_additional" {
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents",
+          "logs:ListTagsForResource", # Permissão adicionada
           "codedeploy:ListTagsForResource", # Permissão adicionada
           "codedeploy:GetApplication",
           "codedeploy:CreateApplication",
@@ -424,6 +425,7 @@ resource "aws_iam_role_policy" "github_actions_additional" {
     create_before_destroy = true
   }
 }
+
 
 
 resource "aws_codedeploy_app" "example" {
