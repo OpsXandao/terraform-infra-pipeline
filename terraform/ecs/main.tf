@@ -427,13 +427,14 @@ resource "aws_iam_role_policy" "github_actions_additional" {
 }
 
 resource "aws_codedeploy_app" "example" {
-  name_prefix      = "demo-cd-app-"
-  compute_platform = "ECS"
+  name              = "demo-cd-app-${random_string.suffix.result}"
+  compute_platform   = "ECS"
 
   lifecycle {
     create_before_destroy = true
   }
 }
+
 
 resource "aws_codedeploy_deployment_group" "example" {
   deployment_group_name  = "demo-cd-group-${random_string.suffix.result}"
