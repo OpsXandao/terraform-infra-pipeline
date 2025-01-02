@@ -19,6 +19,20 @@ variable "cidr_block" {
   type        = string
 }
 
+# --- Variáveis ---
+variable "region" {
+  description = "A AWS region"
+  type        = string
+  default     = "us-east-1"  # região padrão
+}
+
+variable "aws_account_id" {
+  description = "AWS Account ID"
+  type        = string
+  default     = "058264525554"
+}
+
+
 # variable "key_name" {
 #   description = "Nome do par de chaves para acesso via SSH às instâncias"
 #   type        = string

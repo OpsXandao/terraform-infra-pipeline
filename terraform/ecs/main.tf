@@ -1,11 +1,9 @@
 # --- ECS Cluster ---
-
 resource "aws_ecs_cluster" "main" {
   name = var.cluster_name
 }
 
 # --- ECS Node Role ---
-
 data "aws_iam_policy_document" "ecs_node_doc" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -35,7 +33,6 @@ resource "aws_iam_instance_profile" "ecs_node" {
 }
 
 # --- ECS Node SG ---
-
 resource "aws_security_group" "ecs_node_sg" {
   name_prefix = "demo-ecs-node-sg-"
   vpc_id      = var.vpc_id
@@ -49,7 +46,6 @@ resource "aws_security_group" "ecs_node_sg" {
 }
 
 # --- ECS Launch Template ---
-
 data "aws_ssm_parameter" "ecs_node_ami" {
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id"
 }
@@ -71,7 +67,6 @@ resource "aws_launch_template" "ecs_ec2" {
 }
 
 # --- ECS ASG ---
-
 resource "aws_autoscaling_group" "ecs" {
   name_prefix               = "demo-ecs-asg-"
   vpc_zone_identifier       = var.public_subnet_ids
@@ -100,7 +95,6 @@ resource "aws_autoscaling_group" "ecs" {
 }
 
 # --- ECS Capacity Provider ---
-
 resource "aws_ecs_capacity_provider" "main" {
   name = "demo-ecs-ecc"
 
@@ -129,7 +123,6 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 }
 
 # --- ECS Task Role ---
-
 data "aws_iam_policy_document" "ecs_task_doc" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -158,7 +151,6 @@ resource "aws_iam_role_policy_attachment" "ecs_exec_role_policy" {
 }
 
 # --- Cloud Watch Logs ---
-
 resource "aws_cloudwatch_log_group" "ecs" {
   name              = "/ecs/demo"
   retention_in_days = 14
@@ -166,13 +158,10 @@ resource "aws_cloudwatch_log_group" "ecs" {
   lifecycle {
     ignore_changes = [name]
   }
-
 }
 
-# --- ECS Task Definition ---
-
 resource "aws_ecs_task_definition" "app" {
-  family             = "demo-app"
+  family             = "demo-teste"
   task_role_arn      = aws_iam_role.ecs_task_role.arn
   execution_role_arn = aws_iam_role.ecs_exec_role.arn
   network_mode       = "awsvpc"
@@ -181,7 +170,7 @@ resource "aws_ecs_task_definition" "app" {
 
   container_definitions = jsonencode([{
     name         = "app",
-    image        = var.container_image,
+    image        = var.container_image,  # Certifique-se de atualizar a imagem se necessário
     essential    = true,
     portMappings = [{ containerPort = 5000, hostPort = 5000 }],
 
@@ -201,7 +190,6 @@ resource "aws_ecs_task_definition" "app" {
 }
 
 # --- ECS Service ---
-
 resource "aws_security_group" "ecs_task" {
   name_prefix = "ecs-task-sg-"
   description = "Allow all traffic within the VPC"
@@ -225,7 +213,7 @@ resource "aws_security_group" "ecs_task" {
 resource "aws_ecs_service" "app" {
   name            = "app"
   cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.app.arn
+  task_definition = aws_ecs_task_definition.app.arn  # Adicionando a task definition
   desired_count   = 2
 
   network_configuration {
@@ -235,39 +223,36 @@ resource "aws_ecs_service" "app" {
 
   capacity_provider_strategy {
     capacity_provider = aws_ecs_capacity_provider.main.name
-    base              = 1
-    weight            = 100
-  }
-
-  ordered_placement_strategy {
-    type  = "spread"
-    field = "attribute:ecs.availability-zone"
+    base             = 1
+    weight           = 100
   }
 
   deployment_controller {
     type = "CODE_DEPLOY"
   }
 
-  lifecycle {
-    ignore_changes = [desired_count]
-  }
-  
   load_balancer {
     target_group_arn = aws_lb_target_group.blue.arn
     container_name   = "app"
     container_port   = 5000
   }
+
+  lifecycle {
+    ignore_changes = [
+      task_definition,  # Ignorar mudanças na task definition pois será gerenciado pelo CodeDeploy
+      load_balancer,    # Ignorar mudanças no load balancer pois será gerenciado pelo CodeDeploy
+      desired_count
+    ]
+  }
 }
-
 # --- ALB ---
-
 resource "aws_security_group" "http" {
   name_prefix = "http-sg-"
   description = "Allow all HTTP/HTTPS traffic from public"
   vpc_id      = var.vpc_id
 
   dynamic "ingress" {
-    for_each = [80, 443, 5000]
+    for_each = [80, 443, 5000, 5001]
     content {
       protocol    = "tcp"
       from_port   = ingress.value
@@ -328,7 +313,7 @@ resource "aws_lb_target_group" "green" {
     unhealthy_threshold = 3
   }
 }
-
+# Listener para produção
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.id
   port              = 5000
@@ -340,7 +325,19 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# IAM Role para CodeDeploy
+# Listener para teste (porta diferente)
+resource "aws_lb_listener" "test" {
+  load_balancer_arn = aws_lb.main.id
+  port              = 5001  # Porta diferente para teste
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.blue.arn  # Começa apontando para blue também
+  }
+}
+
+# --- IAM Role para CodeDeploy ---
 data "aws_iam_policy_document" "codedeploy_assume_role" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -392,12 +389,15 @@ resource "aws_iam_role_policy" "codedeploy_policy" {
       }
     ]
   })
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
+# Attach Policy para o IAM Role CodeDeploy
+resource "aws_iam_role_policy_attachment" "codedeploy_policy_attachment_1" {
+  role       = aws_iam_role.codedeploy.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"  # Se você deseja uma política padrão, ou use sua política personalizada
+}
+
+# --- GitHub Actions IAM Policy ---
 resource "aws_iam_policy" "github_actions_codedeploy_policy" {
   name        = "github-actions-codedeploy-policy"
   description = "GitHub Actions policy for CodeDeploy actions"
@@ -409,7 +409,7 @@ resource "aws_iam_policy" "github_actions_codedeploy_policy" {
         Action = [
           "codedeploy:ListTagsForResource",
           "codedeploy:GetApplication",
-          "codedeploy:CreateApplication", 
+          "codedeploy:CreateApplication",
           "codedeploy:DeleteApplication",
           "codedeploy:CreateDeploymentGroup",
           "codedeploy:DeleteDeploymentGroup",
@@ -421,36 +421,27 @@ resource "aws_iam_policy" "github_actions_codedeploy_policy" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "github_actions_codedeploy_policy_attachment" {
+# Attach Policy para o GitHub Actions Role
+resource "aws_iam_role_policy_attachment" "github_actions_codedeploy_policy_attachment_1" {
   role       = "github-actions-OpsXandao-pipeline"
   policy_arn = aws_iam_policy.github_actions_codedeploy_policy.arn
 }
 
-resource "aws_iam_role_policy_attachment" "github_actions_policy_attachment" {
-  role       = "github-actions-OpsXandao-pipeline"
-  policy_arn = "arn:aws:iam::aws:policy/AWSCodeDeployFullAccess"  # Política gerenciada da AWS para CodeDeploy
-}
+# CD APP
 
-
-
-resource "aws_codedeploy_app" "example" {
-  name             = "demo-cd-app-${random_string.suffix.result}"
+resource "aws_codedeploy_app" "ecs_app" {
+  name             = "ecs-demo-app"
   compute_platform = "ECS"
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
-resource "aws_codedeploy_deployment_group" "example" {
-  deployment_group_name  = "demo-cd-group-${random_string.suffix.result}"
-  app_name              = aws_codedeploy_app.example.name
-  deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
+resource "aws_codedeploy_deployment_group" "ecs_deployment_group" {
+  app_name               = aws_codedeploy_app.ecs_app.name
+  deployment_group_name  = "ecs-deployment-group"
   service_role_arn      = aws_iam_role.codedeploy.arn
-
-  auto_rollback_configuration {
-    enabled = true
-    events  = ["DEPLOYMENT_FAILURE"]
+  
+  deployment_style {
+    deployment_option = "WITH_TRAFFIC_CONTROL"
+    deployment_type   = "BLUE_GREEN"
   }
 
   blue_green_deployment_config {
@@ -464,20 +455,26 @@ resource "aws_codedeploy_deployment_group" "example" {
     }
   }
 
-  deployment_style {
-    deployment_option = "WITH_TRAFFIC_CONTROL"
-    deployment_type   = "BLUE_GREEN"
-  }
+  deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
 
   ecs_service {
     cluster_name = aws_ecs_cluster.main.name
     service_name = aws_ecs_service.app.name
   }
 
+  auto_rollback_configuration {
+    enabled = true
+    events  = ["DEPLOYMENT_FAILURE"]
+  }
+
   load_balancer_info {
     target_group_pair_info {
       prod_traffic_route {
         listener_arns = [aws_lb_listener.http.arn]
+      }
+
+      test_traffic_route {
+        listener_arns = [aws_lb_listener.test.arn]  # Usando o listener de teste
       }
 
       target_group {
@@ -489,14 +486,4 @@ resource "aws_codedeploy_deployment_group" "example" {
       }
     }
   }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "random_string" "suffix" {
-  length  = 8
-  special = false
-  upper   = false
 }
