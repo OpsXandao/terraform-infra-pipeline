@@ -385,6 +385,35 @@ resource "aws_iam_role_policy" "codedeploy_policy" {
   })
 }
 
+# Política adicional para GitHub Actions
+resource "aws_iam_role_policy" "github_actions_additional" {
+  name = "github-actions-logs-codedeploy-policy"
+  role = "github-actions-OpsXandao-pipeline"  # Nome da role existente
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:PutRetentionPolicy",
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "codedeploy:ListTagsForResource",
+          "codedeploy:GetApplication",
+          "codedeploy:CreateApplication",
+          "codedeploy:DeleteApplication",
+          "codedeploy:CreateDeploymentGroup",
+          "codedeploy:DeleteDeploymentGroup",
+          "codedeploy:GetDeploymentGroup"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # Resto do código permanece igual
 resource "aws_codedeploy_app" "example" {
   compute_platform = "ECS"
