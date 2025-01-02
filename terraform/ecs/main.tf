@@ -403,10 +403,14 @@ resource "aws_iam_role_policy" "github_actions_additional" {
       {
         Effect = "Allow"
         Action = [
-          "logs:PutRetentionPolicy",
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams",
+          "logs:ListTagsForResource",
+          "logs:TagResource",
+          "logs:UntagResource",
           "logs:ListTagsForResource", # Permissão adicionada
           "codedeploy:ListTagsForResource", # Permissão adicionada
           "codedeploy:GetApplication",
