@@ -398,56 +398,39 @@ resource "aws_iam_role_policy" "codedeploy_policy" {
   }
 }
 
-resource "aws_iam_role_policy" "github_actions_additional" {
- name_prefix = "github-actions-logs-cd-"
- role        = "github-actions-OpsXandao-pipeline"
+resource "aws_iam_policy" "github_actions_codedeploy_policy" {
+  name        = "github-actions-codedeploy-policy"
+  description = "GitHub Actions policy for CodeDeploy actions"
+  policy      = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "codedeploy:ListTagsForResource",
+          "codedeploy:GetApplication",
+          "codedeploy:CreateApplication", 
+          "codedeploy:DeleteApplication",
+          "codedeploy:CreateDeploymentGroup",
+          "codedeploy:DeleteDeploymentGroup",
+          "codedeploy:GetDeploymentGroup"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
 
- policy = jsonencode({
-   Version = "2012-10-17"
-   Statement = [
-     {
-       Effect = "Allow"
-       Action = [
-         "logs:CreateLogGroup",
-         "logs:CreateLogStream",
-         "logs:PutLogEvents",
-         "logs:DescribeLogGroups",
-         "logs:DescribeLogStreams",
-         "logs:ListTagsForResource",
-         "logs:TagResource", 
-         "logs:UntagResource",
-         "logs:DeleteLogGroup"
-       ]
-       Resource = [
-         "arn:aws:logs:*:*:log-group:/ecs/demo",
-         "arn:aws:logs:*:*:log-group:/ecs/demo:*"
-       ]
-     },
-     {
-       Effect = "Allow"
-       Action = [
-         "codedeploy:ListTagsForResource",
-         "codedeploy:GetApplication",
-         "codedeploy:CreateApplication", 
-         "codedeploy:DeleteApplication",
-         "codedeploy:CreateDeploymentGroup",
-         "codedeploy:DeleteDeploymentGroup",
-         "codedeploy:GetDeploymentGroup"
-       ]
-       Resource = "*"
-     }
-   ]
- })
-
- lifecycle {
-   create_before_destroy = true
- }
+resource "aws_iam_role_policy_attachment" "github_actions_codedeploy_policy_attachment" {
+  role       = "github-actions-OpsXandao-pipeline"
+  policy_arn = aws_iam_policy.github_actions_codedeploy_policy.arn
 }
 
 resource "aws_iam_role_policy_attachment" "github_actions_policy_attachment" {
   role       = "github-actions-OpsXandao-pipeline"
-  policy_arn = aws_iam_role_policy.github_actions_additional.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSCodeDeployFullAccess"  # Política gerenciada da AWS para CodeDeploy
 }
+
 
 
 resource "aws_codedeploy_app" "example" {
