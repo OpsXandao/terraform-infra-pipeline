@@ -393,7 +393,6 @@ resource "aws_iam_role_policy" "codedeploy_policy" {
   }
 }
 
-# Política adicional para GitHub Actions
 resource "aws_iam_role_policy" "github_actions_additional" {
   name_prefix = "github-actions-logs-cd-"
   role        = "github-actions-OpsXandao-pipeline"
@@ -408,7 +407,7 @@ resource "aws_iam_role_policy" "github_actions_additional" {
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents",
-          "codedeploy:ListTagsForResource",
+          "codedeploy:ListTagsForResource", # Permissão adicionada
           "codedeploy:GetApplication",
           "codedeploy:CreateApplication",
           "codedeploy:DeleteApplication",
@@ -425,6 +424,7 @@ resource "aws_iam_role_policy" "github_actions_additional" {
     create_before_destroy = true
   }
 }
+
 
 resource "aws_codedeploy_app" "example" {
   name              = "demo-cd-app-${random_string.suffix.result}"
