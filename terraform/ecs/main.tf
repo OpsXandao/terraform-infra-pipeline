@@ -411,6 +411,7 @@ resource "aws_iam_role_policy" "github_actions_additional" {
           "logs:ListTagsForResource",
           "logs:TagResource",
           "logs:UntagResource",
+          "logs:DeleteLogGroup", 
           "logs:ListTagsForResource", # Permissão adicionada
           "codedeploy:ListTagsForResource", # Permissão adicionada
           "codedeploy:GetApplication",
