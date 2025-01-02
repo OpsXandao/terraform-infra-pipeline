@@ -246,6 +246,7 @@ resource "aws_ecs_service" "app" {
   lifecycle {
     ignore_changes = [desired_count]
   }
+  
   load_balancer {
     target_group_arn = aws_lb_target_group.blue.arn
     container_name   = "app"
@@ -261,7 +262,7 @@ resource "aws_security_group" "http" {
   vpc_id      = var.vpc_id
 
   dynamic "ingress" {
-    for_each = [80, 443,5000]
+    for_each = [80, 443, 5000]
     content {
       protocol    = "tcp"
       from_port   = ingress.value
@@ -334,42 +335,88 @@ resource "aws_lb_listener" "http" {
   }
 }
 
+# IAM Role para CodeDeploy
+data "aws_iam_policy_document" "codedeploy_assume_role" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    effect  = "Allow"
 
-# --- IAM Code Deploy ---
+    principals {
+      type        = "Service"
+      identifiers = ["codedeploy.amazonaws.com"]
+    }
+  }
+}
 
-resource "aws_iam_role" "codedeploy_role" {
-  name_prefix        = "codedeploy-role"
-  assume_role_policy = jsonencode({
+resource "aws_iam_role" "codedeploy" {
+  name               = "codedeploy-service-role"
+  assume_role_policy = data.aws_iam_policy_document.codedeploy_assume_role.json
+}
+
+# Política personalizada para CodeDeploy ECS
+resource "aws_iam_role_policy" "codedeploy_policy" {
+  name = "codedeploy-ecs-policy"
+  role = aws_iam_role.codedeploy.id
+
+  policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "codedeploy.amazonaws.com"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:DescribeServices",
+          "ecs:CreateTaskSet",
+          "ecs:UpdateServicePrimaryTaskSet",
+          "ecs:DeleteTaskSet",
+          "elasticloadbalancing:DescribeTargetGroups",
+          "elasticloadbalancing:DescribeListeners",
+          "elasticloadbalancing:ModifyListener",
+          "elasticloadbalancing:DescribeRules",
+          "elasticloadbalancing:ModifyRule",
+          "lambda:InvokeFunction",
+          "cloudwatch:DescribeAlarms",
+          "sns:Publish",
+          "s3:GetObject",
+          "s3:GetObjectVersion"
+        ]
+        Resource = "*"
       }
-      Action = "sts:AssumeRole"
-    }]
+    ]
   })
 }
 
-resource "aws_iam_role_policy_attachment" "codedeploy_role_policy" {
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRoleForECS"
-  role       = aws_iam_role.codedeploy_role.name
-}
-
-# --- Code Deploy ---
-
-resource "aws_codedeploy_app" "ecs" {
-  name = "demo-ecs-codedeploy-app"
+# Resto do código permanece igual
+resource "aws_codedeploy_app" "example" {
   compute_platform = "ECS"
+  name             = "demo-cd-app"
 }
 
-resource "aws_codedeploy_deployment_group" "ecs" {
-  app_name = aws_codedeploy_app.ecs.name
-  deployment_group_name = "demo-ecs-deployment-group"
-
-  service_role_arn = aws_iam_role.codedeploy_role.arn
-
+resource "aws_codedeploy_deployment_group" "example" {
+  app_name               = aws_codedeploy_app.example.name
   deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
+  deployment_group_name  = "example"
+  service_role_arn      = aws_iam_role.codedeploy.arn
+
+  auto_rollback_configuration {
+    enabled = true
+    events  = ["DEPLOYMENT_FAILURE"]
+  }
+
+  blue_green_deployment_config {
+    deployment_ready_option {
+      action_on_timeout = "CONTINUE_DEPLOYMENT"
+    }
+
+    terminate_blue_instances_on_deployment_success {
+      action                           = "TERMINATE"
+      termination_wait_time_in_minutes = 5
+    }
+  }
+
+  deployment_style {
+    deployment_option = "WITH_TRAFFIC_CONTROL"
+    deployment_type   = "BLUE_GREEN"
+  }
 
   ecs_service {
     cluster_name = aws_ecs_cluster.main.name
@@ -378,17 +425,16 @@ resource "aws_codedeploy_deployment_group" "ecs" {
 
   load_balancer_info {
     target_group_pair_info {
+      prod_traffic_route {
+        listener_arns = [aws_lb_listener.http.arn]
+      }
+
       target_group {
         name = aws_lb_target_group.blue.name
       }
 
       target_group {
-  name = aws_lb_target_group.green.name
-}
-
-
-      prod_traffic_route {
-        listener_arns = [aws_lb_listener.http.arn]
+        name = aws_lb_target_group.green.name
       }
     }
   }
