@@ -164,15 +164,15 @@ resource "aws_ecs_task_definition" "app" {
   family             = "demo-teste"
   task_role_arn      = aws_iam_role.ecs_task_role.arn
   execution_role_arn = aws_iam_role.ecs_exec_role.arn
-  network_mode       = "awsvpc"
+  network_mode       = "bridge"  # Changed from "awsvpc"
   cpu                = 256
   memory             = 256
 
   container_definitions = jsonencode([{
     name         = "app",
-    image        = var.container_image,  # Certifique-se de atualizar a imagem se necessário
+    image        = var.container_image,
     essential    = true,
-    portMappings = [{ containerPort = 5000, hostPort = 5000 }],
+    portMappings = [{ containerPort = 5000 }], # Removed hostPort
 
     environment = [
       { name = "EXAMPLE", value = "example" }
@@ -213,19 +213,8 @@ resource "aws_security_group" "ecs_task" {
 resource "aws_ecs_service" "app" {
   name            = "app"
   cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.app.arn  # Adicionando a task definition
+  task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 2
-
-  network_configuration {
-    security_groups = [aws_security_group.ecs_task.id]
-    subnets         = var.public_subnet_ids
-  }
-
-  capacity_provider_strategy {
-    capacity_provider = aws_ecs_capacity_provider.main.name
-    base             = 1
-    weight           = 100
-  }
 
   deployment_controller {
     type = "CODE_DEPLOY"
@@ -239,8 +228,8 @@ resource "aws_ecs_service" "app" {
 
   lifecycle {
     ignore_changes = [
-      task_definition,  # Ignorar mudanças na task definition pois será gerenciado pelo CodeDeploy
-      load_balancer,    # Ignorar mudanças no load balancer pois será gerenciado pelo CodeDeploy
+      task_definition,
+      load_balancer,
       desired_count
     ]
   }
