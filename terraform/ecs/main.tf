@@ -32,7 +32,6 @@ resource "aws_iam_instance_profile" "ecs_node" {
   role        = aws_iam_role.ecs_node_role.name
 }
 
-# --- ECS Node SG ---
 resource "aws_security_group" "ecs_node_sg" {
   name_prefix = "demo-ecs-node-sg-"
   vpc_id      = var.vpc_id
@@ -81,7 +80,7 @@ resource "aws_autoscaling_group" "ecs" {
   max_size                  = 8
   health_check_grace_period = 0
   health_check_type         = "EC2"
-  protect_from_scale_in     = false
+  protect_from_scale_in     = true
 
   launch_template {
     id      = aws_launch_template.ecs_ec2.id
@@ -171,7 +170,7 @@ resource "aws_ecs_task_definition" "app" {
   family             = "demo-teste"
   task_role_arn      = aws_iam_role.ecs_task_role.arn
   execution_role_arn = aws_iam_role.ecs_exec_role.arn
-  network_mode       = "bridge"  # Changed from "awsvpc"
+  network_mode       = "bridge"
   cpu                = 256
   memory             = 256
 
@@ -179,7 +178,7 @@ resource "aws_ecs_task_definition" "app" {
     name         = "app",
     image        = var.container_image,
     essential    = true,
-    portMappings = [{ containerPort = 5000 }], # Removed hostPort
+    portMappings = [{ containerPort = 5000 }],
 
     environment = [
       { name = "EXAMPLE", value = "example" }
@@ -324,12 +323,12 @@ resource "aws_lb_listener" "http" {
 # Listener para teste (porta diferente)
 resource "aws_lb_listener" "test" {
   load_balancer_arn = aws_lb.main.id
-  port              = 5001  # Porta diferente para teste
+  port              = 5001 
   protocol          = "HTTP"
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.blue.arn  # Começa apontando para blue também
+    target_group_arn = aws_lb_target_group.green.arn 
   }
 }
 
