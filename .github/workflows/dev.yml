@@ -9,12 +9,6 @@ permissions:
   id-token: write
   contents: read
 
-env:
-  AWS_REGION: us-east-1
-  APP_NAME: ecs-demo-app
-  DEPLOYMENT_GROUP: ecs-deployment-group
-  CONTAINER_IMAGE: 03021914/blue-green:v2
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -27,28 +21,29 @@ jobs:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
 
+      - name: Create AppSpec file
+        run: |
+          cat > appspec.json << 'EOF'
+          {
+            "version": 0.0,
+            "Resources": [{
+              "TargetService": {
+                "Type": "AWS::ECS::Service",
+                "Properties": {
+                  "TaskDefinition": "demo-teste",
+                  "LoadBalancerInfo": {
+                    "ContainerName": "app",
+                    "ContainerPort": 5000
+                  }
+                }
+              }
+            }]
+          }
+          EOF
+
       - name: Deploy to ECS
         run: |
           aws deploy create-deployment \
-            --application-name ${{ env.APP_NAME }} \
-            --deployment-group-name ${{ env.DEPLOYMENT_GROUP }} \
-            --revision '{
-              "revisionType": "AppSpecContent",
-              "appSpecContent": {
-                "content": "{
-                  \"version\": 0.0,
-                  \"Resources\": [{
-                    \"TargetService\": {
-                      \"Type\": \"AWS::ECS::Service\",
-                      \"Properties\": {
-                        \"TaskDefinition\": \"demo-teste\",
-                        \"LoadBalancerInfo\": {
-                          \"ContainerName\": \"app\",
-                          \"ContainerPort\": 5000
-                        }
-                      }
-                    }
-                  }]
-                }"
-              }
-            }'
+            --application-name ecs-demo-app \
+            --deployment-group-name ecs-deployment-group \
+            --revision "{\"revisionType\": \"AppSpecContent\", \"appSpecContent\": {\"content\": $(cat appspec.json | jq -c tostring)}}"
