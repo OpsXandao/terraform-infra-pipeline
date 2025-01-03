@@ -270,12 +270,12 @@ resource "aws_lb_target_group" "blue" {
   vpc_id      = var.vpc_id
   protocol    = "HTTP"
   port        = 5000
-  target_type = "ip"
+  target_type = "instance"
 
   health_check {
     enabled             = true
     path                = "/"
-    port                = 5000
+    port                = "traffic-port"
     matcher             = 200
     interval            = 10
     timeout             = 5
@@ -289,12 +289,12 @@ resource "aws_lb_target_group" "green" {
   vpc_id      = var.vpc_id
   protocol    = "HTTP"
   port        = 5000
-  target_type = "ip"
+  target_type = "instance"
 
   health_check {
     enabled             = true
     path                = "/"
-    port                = 5000
+    port                = "traffic-port"
     matcher             = 200
     interval            = 10
     timeout             = 5
