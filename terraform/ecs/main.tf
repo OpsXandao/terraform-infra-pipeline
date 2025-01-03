@@ -153,7 +153,7 @@ resource "aws_iam_role_policy_attachment" "ecs_exec_role_policy" {
 # --- Cloud Watch Logs ---
 resource "aws_cloudwatch_log_group" "ecs" {
   name              = "/ecs/demo"
-  retention_in_days = 14
+  retention_in_days = 30
 
   lifecycle {
     ignore_changes = [name]
@@ -383,13 +383,20 @@ resource "aws_iam_role_policy" "codedeploy_policy" {
           "cloudwatch:DescribeAlarms",
           "sns:Publish",
           "s3:GetObject",
-          "s3:GetObjectVersion"
-        ]
+          "s3:GetObjectVersion",
+          "iam:PassRole" // Adicionado
+        ],
         Resource = "*"
+      },
+      {
+        Effect = "Allow",
+        Action = "iam:PassRole",
+        Resource = aws_iam_role.ecs_exec_role.arn // Permissão específica para passar o papel ecs_exec_role
       }
     ]
   })
 }
+
 
 # Attach Policy para o IAM Role CodeDeploy
 resource "aws_iam_role_policy_attachment" "codedeploy_policy_attachment_1" {
