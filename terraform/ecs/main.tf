@@ -476,7 +476,7 @@ resource "aws_codedeploy_deployment_group" "ecs_deployment_group" {
       }
 
       test_traffic_route {
-        listener_arns = [aws_lb_listener.test.arn]  # Usando o listener de teste
+        listener_arns = [aws_lb_listener.test.arn] 
       }
 
       target_group {
