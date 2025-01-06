@@ -7,5 +7,3 @@ terraform/terraform.tfstate.backup
 # Ignorar a pasta .terraform dentro da pasta terraform
 terraform/.terraform/
 
-# Ignorar workflows específicos do GitHub Actions
-.github/workflows/dev.yml
