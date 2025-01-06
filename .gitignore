@@ -1,9 +1,11 @@
-# Ignorar o arquivo .terraform.lock.hcl
+# Ignorar arquivos e pastas do Terraform
 terraform/.terraform.lock.hcl
 terraform/.terraform.tfstate.lock.info
 terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
 
-
 # Ignorar a pasta .terraform dentro da pasta terraform
 terraform/.terraform/
+
+# Ignorar workflows específicos do GitHub Actions
+.github/workflows/dev.yml

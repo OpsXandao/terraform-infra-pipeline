@@ -1,56 +1,56 @@
-name: "DEV DEPLOY"
+  name: "DEV DEPLOY"
 
-on:
-  push:
-    branches:
-      - dev
+  on:
+    push:
+      branches:
+        - dev
 
-permissions:
-  id-token: write
-  contents: read
+  permissions:
+    id-token: write
+    contents: read
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
+  jobs:
+    deploy:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v3
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
-          aws-region: us-east-1
+        - name: Configure AWS Credentials
+          uses: aws-actions/configure-aws-credentials@v4
+          with:
+            role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
+            aws-region: us-east-1
 
-      - name: Register new task definition
-        run: |
-          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition demo-teste --query 'taskDefinition' --output json)
-          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "03021914/blue-green:v2"' | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
-          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION" --query 'taskDefinition.taskDefinitionArn' --output text)
-          echo "TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
+        - name: Register new task definition
+          run: |
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition demo-teste --query 'taskDefinition' --output json)
+            NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "03021914/blue-green:v2"' | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+            NEW_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION" --query 'taskDefinition.taskDefinitionArn' --output text)
+            echo "TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
 
-      - name: Create AppSpec file
-        run: |
-          cat > appspec.json << EOF
-          {
-            "version": 0.0,
-            "Resources": [{
-              "TargetService": {
-                "Type": "AWS::ECS::Service",
-                "Properties": {
-                  "TaskDefinition": "${{ env.TASK_DEF_ARN }}",
-                  "LoadBalancerInfo": {
-                    "ContainerName": "app",
-                    "ContainerPort": 5000
+        - name: Create AppSpec file
+          run: |
+            cat > appspec.json << EOF
+            {
+              "version": 0.0,
+              "Resources": [{
+                "TargetService": {
+                  "Type": "AWS::ECS::Service",
+                  "Properties": {
+                    "TaskDefinition": "${{ env.TASK_DEF_ARN }}",
+                    "LoadBalancerInfo": {
+                      "ContainerName": "app",
+                      "ContainerPort": 5000
+                    }
                   }
                 }
-              }
-            }]
-          }
-          EOF
+              }]
+            }
+            EOF
 
-      - name: Deploy to ECS
-        run: |
-          aws deploy create-deployment \
-            --application-name ecs-demo-app \
-            --deployment-group-name ecs-deployment-group \
-            --revision "{\"revisionType\": \"AppSpecContent\", \"appSpecContent\": {\"content\": $(cat appspec.json | jq -c tostring)}}"
+        - name: Deploy to ECS
+          run: |
+            aws deploy create-deployment \
+              --application-name ecs-demo-app \
+              --deployment-group-name ecs-deployment-group \
+              --revision "{\"revisionType\": \"AppSpecContent\", \"appSpecContent\": {\"content\": $(cat appspec.json | jq -c tostring)}}"
