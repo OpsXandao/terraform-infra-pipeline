@@ -75,6 +75,7 @@ jobs:
 
       - name: Health check and switch production
         run: |
+          echo "Waiting for 60 seconds for health checks..."
           sleep 60
           
           PROD_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5000`].ListenerArn' --output text)
