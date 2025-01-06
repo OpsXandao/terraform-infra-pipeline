@@ -269,7 +269,7 @@ resource "aws_lb" "main" {
 }
 
 resource "aws_lb_target_group" "blue" {
-  name = "blue"
+  name_prefix = "blue-"
   vpc_id      = var.vpc_id
   protocol    = "HTTP"
   port        = 5000
@@ -288,7 +288,7 @@ resource "aws_lb_target_group" "blue" {
 }
 
 resource "aws_lb_target_group" "green" {
-  name = "green"
+  name_prefix = "green-"
   vpc_id      = var.vpc_id
   protocol    = "HTTP"
   port        = 5000

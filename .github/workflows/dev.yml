@@ -65,8 +65,10 @@ jobs:
       - name: Update test listener (5001)
         run: |
           TEST_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5001`].ListenerArn' --output text)
-          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names ${{ steps.target-group.outputs.target }} --query 'TargetGroups[0].TargetGroupArn' --output text)
-          
+              
+          # List all target groups and filter for the one that starts with green-
+          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --query 'TargetGroups[?starts_with(TargetGroupName, `green-`)].TargetGroupArn' --output text)
+              
           aws elbv2 modify-listener \
             --listener-arn $TEST_LISTENER_ARN \
             --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
