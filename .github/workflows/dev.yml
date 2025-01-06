@@ -55,12 +55,11 @@ jobs:
             --service app \
             --task-definition ${{ env.TASK_DEF_ARN }} \
             --force-new-deployment
-        
 
       - name: Wait for service stability
         run: |
           aws ecs wait services-stable \
-            --cluster demo-cluster \
+            --cluster DevCluster \
             --services app
 
       - name: Update test listener (5001)
@@ -87,7 +86,7 @@ jobs:
         if: failure()
         run: |
           aws ecs update-service \
-            --cluster demo-cluster \
+            --cluster DevCluster \
             --service app \
             --task-definition demo-teste \
             --force-new-deployment
