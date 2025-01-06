@@ -51,10 +51,11 @@ jobs:
       - name: Update ECS Service
         run: |
           aws ecs update-service \
-            --cluster demo-cluster \
+            --cluster DevCluster \
             --service app \
             --task-definition ${{ env.TASK_DEF_ARN }} \
             --force-new-deployment
+        
 
       - name: Wait for service stability
         run: |

@@ -175,10 +175,10 @@ resource "aws_ecs_task_definition" "app" {
   memory             = 256
 
   container_definitions = jsonencode([{
-    name         = "app",
-    image        = var.container_image,
-    essential    = true,
-    portMappings = [{ containerPort = 5000 }],
+    name         = "app"
+    image        = var.container_image
+    essential    = true
+    portMappings = [{ containerPort = 5000 }]
 
     environment = [
       { name = "EXAMPLE", value = "example" }
@@ -222,10 +222,6 @@ resource "aws_ecs_service" "app" {
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 2
 
-  deployment_controller {
-    type = "CODE_DEPLOY"
-  }
-
   load_balancer {
     target_group_arn = aws_lb_target_group.blue.arn
     container_name   = "app"
@@ -240,6 +236,7 @@ resource "aws_ecs_service" "app" {
     ]
   }
 }
+
 # --- ALB ---
 resource "aws_security_group" "http" {
   name_prefix = "http-sg-"
@@ -308,6 +305,7 @@ resource "aws_lb_target_group" "green" {
     unhealthy_threshold = 3
   }
 }
+
 # Listener para produção
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.id
@@ -332,160 +330,26 @@ resource "aws_lb_listener" "test" {
   }
 }
 
-# --- IAM Role para CodeDeploy ---
-data "aws_iam_policy_document" "codedeploy_assume_role" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    effect  = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["codedeploy.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_iam_role" "codedeploy" {
-  name_prefix        = "codedeploy-service-role-"
-  assume_role_policy = data.aws_iam_policy_document.codedeploy_assume_role.json
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# Política personalizada para CodeDeploy ECS
-resource "aws_iam_role_policy" "codedeploy_policy" {
-  name_prefix = "codedeploy-ecs-policy-"
-  role        = aws_iam_role.codedeploy.id
+# --- GitHub Actions IAM Policy ---
+resource "aws_iam_policy" "github_actions_ecs_policy" {
+  name        = "github-actions-ecs-policy"
+  description = "GitHub Actions policy for deploying ECS services using Terraform and CI/CD pipelines."
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = [
+        Action   = [
+          "ecs:UpdateService",
           "ecs:DescribeServices",
-          "ecs:CreateTaskSet",
-          "ecs:UpdateServicePrimaryTaskSet",
-          "ecs:DeleteTaskSet",
-          "elasticloadbalancing:DescribeTargetGroups",
-          "elasticloadbalancing:DescribeListeners",
-          "elasticloadbalancing:ModifyListener",
-          "elasticloadbalancing:DescribeRules",
-          "elasticloadbalancing:ModifyRule",
-          "lambda:InvokeFunction",
-          "cloudwatch:DescribeAlarms",
-          "sns:Publish",
-          "s3:GetObject",
-          "s3:GetObjectVersion",
-          "iam:PassRole" // Adicionado
-        ],
-        Resource = "*"
-      },
-      {
-        Effect = "Allow",
-        Action = "iam:PassRole",
-        Resource = aws_iam_role.ecs_exec_role.arn // Permissão específica para passar o papel ecs_exec_role
-      }
-    ]
-  })
-}
-
-
-# Attach Policy para o IAM Role CodeDeploy
-resource "aws_iam_role_policy_attachment" "codedeploy_policy_attachment_1" {
-  role       = aws_iam_role.codedeploy.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"  # Se você deseja uma política padrão, ou use sua política personalizada
-}
-
-# --- GitHub Actions IAM Policy ---
-resource "aws_iam_policy" "github_actions_codedeploy_policy" {
-  name        = "github-actions-codedeploy-policy"
-  description = "GitHub Actions policy for CodeDeploy actions"
-  policy      = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "codedeploy:ListTagsForResource",
-          "codedeploy:GetApplication",
-          "codedeploy:CreateApplication",
-          "codedeploy:DeleteApplication",
-          "codedeploy:CreateDeploymentGroup",
-          "codedeploy:DeleteDeploymentGroup",
-          "codedeploy:GetDeploymentGroup"
+          "ecs:DescribeTaskDefinition",
+          "ecs:RegisterTaskDefinition",
+          "ecs:DescribeClusters",
+          "iam:PassRole"
         ]
+        Effect   = "Allow"
         Resource = "*"
       }
     ]
   })
-}
-
-# Attach Policy para o GitHub Actions Role
-resource "aws_iam_role_policy_attachment" "github_actions_codedeploy_policy_attachment_1" {
-  role       = "github-actions-OpsXandao-pipeline"
-  policy_arn = aws_iam_policy.github_actions_codedeploy_policy.arn
-}
-
-# CD APP
-
-resource "aws_codedeploy_app" "ecs_app" {
-  name             = "ecs-demo-app"
-  compute_platform = "ECS"
-}
-
-resource "aws_codedeploy_deployment_group" "ecs_deployment_group" {
-  app_name               = aws_codedeploy_app.ecs_app.name
-  deployment_group_name  = "ecs-deployment-group"
-  service_role_arn      = aws_iam_role.codedeploy.arn
-  
-  deployment_style {
-    deployment_option = "WITH_TRAFFIC_CONTROL"
-    deployment_type   = "BLUE_GREEN"
-  }
-
-  blue_green_deployment_config {
-    deployment_ready_option {
-      action_on_timeout = "CONTINUE_DEPLOYMENT"
-    }
-
-    terminate_blue_instances_on_deployment_success {
-      action                           = "TERMINATE"
-      termination_wait_time_in_minutes = 5
-    }
-  }
-
-  deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
-
-  ecs_service {
-    cluster_name = aws_ecs_cluster.main.name
-    service_name = aws_ecs_service.app.name
-  }
-
-  auto_rollback_configuration {
-    enabled = true
-    events  = ["DEPLOYMENT_FAILURE"]
-  }
-
-  load_balancer_info {
-    target_group_pair_info {
-      prod_traffic_route {
-        listener_arns = [aws_lb_listener.http.arn]
-      }
-
-      test_traffic_route {
-        listener_arns = [aws_lb_listener.test.arn] 
-      }
-
-      target_group {
-        name = aws_lb_target_group.blue.name
-      }
-
-      target_group {
-        name = aws_lb_target_group.green.name
-      }
-    }
-  }
 }
