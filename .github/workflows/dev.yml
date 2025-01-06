@@ -48,7 +48,7 @@ jobs:
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION" --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
 
-      - name: Update ECS Service
+      - name: Update ECS Service for test (port 5001)
         run: |
           aws ecs update-service \
             --cluster DevCluster \
@@ -56,13 +56,13 @@ jobs:
             --task-definition ${{ env.TASK_DEF_ARN }} \
             --force-new-deployment
 
-      - name: Wait for service stability
+      - name: Wait for service stability on test
         run: |
           aws ecs wait services-stable \
             --cluster DevCluster \
             --services app
 
-      - name: Update test listener (5001)
+      - name: Update test listener (port 5001)
         run: |
           TEST_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5001`].ListenerArn' --output text)
               
@@ -73,7 +73,7 @@ jobs:
             --listener-arn $TEST_LISTENER_ARN \
             --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
 
-      - name: Health check and switch production
+      - name: Health check and switch to production (port 5000)
         run: |
           echo "Waiting for 60 seconds for health checks..."
           sleep 60
@@ -88,8 +88,19 @@ jobs:
       - name: Rollback on failure
         if: failure()
         run: |
+          echo "Rollback: Deploying previous image..."
+          # Register the previous task definition (blue or green, depending on the current state)
+          PREVIOUS_TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition demo-teste --query 'taskDefinition.taskDefinitionArn' --output text)
           aws ecs update-service \
             --cluster DevCluster \
             --service app \
-            --task-definition demo-teste \
+            --task-definition $PREVIOUS_TASK_DEF_ARN \
             --force-new-deployment
+
+          # Revert listener back to the previous target group (either blue or green)
+          PROD_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5000`].ListenerArn' --output text)
+          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names ${{ steps.target-group.outputs.current }} --query 'TargetGroups[0].TargetGroupArn' --output text)
+          
+          aws elbv2 modify-listener \
+            --listener-arn $PROD_LISTENER_ARN \
+            --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
