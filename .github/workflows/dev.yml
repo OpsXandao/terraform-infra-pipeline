@@ -13,15 +13,41 @@ jobs:
   blue-green-deploy:
     runs-on: ubuntu-latest
     steps:
-      # Checkout do repositório
       - uses: actions/checkout@v3
 
-      # Configuração de credenciais AWS
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
+
+      # Criar ou verificar serviços
+      - name: Ensure Services Exist
+        run: |
+          # Verificar se o serviço verde existe, se não, criar
+          if ! aws ecs describe-services --cluster demo-ecs-cluster --services app-green | grep -q "ACTIVE"; then
+            aws ecs create-service \
+              --cluster demo-ecs-cluster \
+              --service-name app-green \
+              --task-definition demo-teste \
+              --desired-count 0 \
+              --launch-type EC2 \
+              --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxxx,subnet-xxxxxx],securityGroups=[sg-xxxxxx]}" \
+              --load-balancer-target-group-arn arn:aws:elbv2:us-east-1:058264525554:targetgroup/green-target-group
+
+          fi
+
+          # Verificar se o serviço azul existe, se não, criar
+          if ! aws ecs describe-services --cluster demo-ecs-cluster --services app-blue | grep -q "ACTIVE"; then
+            aws ecs create-service \
+              --cluster demo-ecs-cluster \
+              --service-name app-blue \
+              --task-definition demo-teste \
+              --desired-count 1 \
+              --launch-type FARGATE \
+              --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxxx,subnet-xxxxxx],securityGroups=[sg-xxxxxx]}" \
+              --load-balancer-target-group-arn arn:aws:elbv2:us-east-1:058264525554:targetgroup/blue-target-group
+          fi
 
       # Registrar task definition para o ambiente "verde"
       - name: Register Green Task Definition
@@ -40,30 +66,27 @@ jobs:
 
       # Testar ambiente "verde"
       - name: Test Green Environment
-        run: echo "Run your integration tests here"
+        run: |
+          echo "Esperando serviço estabilizar..."
+          aws ecs wait services-stable \
+            --cluster demo-ecs-cluster \
+            --services app-green
+          echo "Run your integration tests here"
 
-      # Defina os valores corretos para os ARN dos target groups
+      # Configurar ARNs dos target groups
       - name: Set Target Group ARNs
         run: |
-          export GREEN_TARGET_GROUP_ARN="arn:aws:elbv2:us-east-1:058264525554:targetgroup/green-target-group"
-          export BLUE_TARGET_GROUP_ARN="arn:aws:elbv2:us-east-1:058264525554:targetgroup/blue-target-group"
+          echo "GREEN_TARGET_GROUP_ARN=arn:aws:elbv2:us-east-1:058264525554:targetgroup/green-target-group" >> $GITHUB_ENV
+          echo "BLUE_TARGET_GROUP_ARN=arn:aws:elbv2:us-east-1:058264525554:targetgroup/blue-target-group" >> $GITHUB_ENV
 
-      # Redirecionar tráfego para o ambiente "verde" (target group verde)
+      # Redirecionar tráfego para o verde
       - name: Redirect Traffic to Green
         run: |
-          aws elbv2 modify-target-group-attributes \
-            --target-group-arn $GREEN_TARGET_GROUP_ARN \
-            --attributes Key=stickiness.enabled,Value=false
-          aws elbv2 modify-target-group-attributes \
-            --target-group-arn $BLUE_TARGET_GROUP_ARN \
-            --attributes Key=stickiness.enabled,Value=false
-
-          # Atualizar as regras de listener do ALB para redirecionar o tráfego para o grupo de destino verde
           aws elbv2 modify-listener \
             --listener-arn arn:aws:alb:us-east-1:058264525554:listener/app/my-alb/1234567890abcdef \
-            --default-actions Type=forward,TargetGroupArn=$GREEN_TARGET_GROUP_ARN
+            --default-actions Type=forward,TargetGroupArn=${{ env.GREEN_TARGET_GROUP_ARN }}
 
-      # Deploy nova versão no ambiente "azul"
+      # Deploy nova versão no azul
       - name: Deploy Blue Environment with New Version
         run: |
           sed 's/"family": "demo-teste"/"family": "demo-teste-blue"/g; s/v1/v2/g' terraform/ecs/task_definition.tpl.json > blue_task_definition.json
@@ -74,35 +97,55 @@ jobs:
             --task-definition demo-teste-blue \
             --desired-count 1
 
-      # Testar ambiente "azul"
+      # Testar ambiente azul
       - name: Test Blue Environment
-        run: echo "Run your integration tests here for the Blue environment"
+        run: |
+          echo "Esperando serviço estabilizar..."
+          aws ecs wait services-stable \
+            --cluster demo-ecs-cluster \
+            --services app-blue
+          echo "Run your integration tests here for the Blue environment"
 
-      # Redirecionar tráfego de volta ao ambiente "azul" (target group azul)
+      # Redirecionar para o azul se tudo estiver OK
       - name: Redirect Traffic to Blue
         run: |
-          # Atualizar as regras de listener do ALB para redirecionar o tráfego para o grupo de destino azul
           aws elbv2 modify-listener \
             --listener-arn arn:aws:alb:us-east-1:058264525554:listener/app/my-alb/1234567890abcdef \
-            --default-actions Type=forward,TargetGroupArn=$BLUE_TARGET_GROUP_ARN
+            --default-actions Type=forward,TargetGroupArn=${{ env.BLUE_TARGET_GROUP_ARN }}
 
-      # Encerrar ambiente "verde" após o tráfego ser redirecionado para o azul
+      # Encerrar verde
       - name: Scale Down Green Environment
         run: |
           aws ecs update-service \
             --cluster demo-ecs-cluster \
             --service app-green \
             --desired-count 0
-          
-      # Rollback se a versão azul falhar
+
+      # Rollback se necessário
       - name: Rollback if Blue Deployment Fails
         if: failure()
         run: |
-          aws ecs update-service \
-            --cluster demo-ecs-cluster \
-            --service app-green \
-            --desired-count 1
+          # Reverter para v1 no ambiente azul
+          sed 's/"family": "demo-teste"/"family": "demo-teste-blue"/g' terraform/ecs/task_definition.tpl.json > blue_rollback_definition.json
+          aws ecs register-task-definition --cli-input-json file://blue_rollback_definition.json
           aws ecs update-service \
             --cluster demo-ecs-cluster \
             --service app-blue \
+            --task-definition demo-teste-blue \
+            --desired-count 1
+
+          # Esperar estabilização
+          aws ecs wait services-stable \
+            --cluster demo-ecs-cluster \
+            --services app-blue
+
+          # Redirecionar tráfego de volta para o azul
+          aws elbv2 modify-listener \
+            --listener-arn arn:aws:alb:us-east-1:058264525554:listener/app/my-alb/1234567890abcdef \
+            --default-actions Type=forward,TargetGroupArn=${{ env.BLUE_TARGET_GROUP_ARN }}
+
+          # Encerrar ambiente verde
+          aws ecs update-service \
+            --cluster demo-ecs-cluster \
+            --service app-green \
             --desired-count 0
