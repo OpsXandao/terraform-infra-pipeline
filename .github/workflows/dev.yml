@@ -28,52 +28,40 @@ jobs:
         run: |
           sed 's/"family": "demo-teste"/"family": "demo-teste-green"/g' terraform/ecs/task_definition.tpl.json > green_task_definition.json
           aws ecs register-task-definition --cli-input-json file://green_task_definition.json
-          aws ecs describe-task-definition --task-definition demo-teste-green
 
-      # Criar ou Atualizar o serviço "verde"
-      - name: Create or Update Green Service
+      # Atualizar serviço "verde"
+      - name: Update Green Service
         run: |
-          aws ecs describe-services \
+          aws ecs update-service \
             --cluster demo-ecs-cluster \
-            --services app-green || aws ecs create-service \
-            --cluster demo-ecs-cluster \
-            --service-name app-green \
+            --service app-green \
             --task-definition demo-teste-green \
-            --desired-count 1 \
-            --launch-type EC2 \
-            --load-balancers targetGroupArn=${{ secrets.GREEN_TARGET_GROUP_ARN }},containerName=app,containerPort=5000
+            --desired-count 1
 
       # Testar ambiente "verde"
       - name: Test Green Environment
         run: echo "Run your integration tests here"
 
-      # Redirecionar tráfego para o ambiente "verde"
+      # Redirecionar tráfego para o ambiente "verde" (target group verde)
       - name: Redirect Traffic to Green
         run: |
-          aws codedeploy update-deployment-group \
-            --application-name demo-app \
-            --current-deployment-group-name blue-group \
-            --new-deployment-group-name green-group \
-            --load-balancer-info '{
-              "targetGroupPairInfoList": [
-                {
-                  "targetGroups": [
-                    {"name": "green-target-group"},
-                    {"name": "blue-target-group"}
-                  ],
-                  "prodTrafficRoute": {
-                    "listenerArns": ["arn:aws:alb:..."]
-                  }
-                }
-              ]
-            }'
+          aws elbv2 modify-target-group-attributes \
+            --target-group-arn ${GREEN_TARGET_GROUP_ARN} \
+            --attributes Key=stickiness.enabled,Value=false
+          aws elbv2 modify-target-group-attributes \
+            --target-group-arn ${BLUE_TARGET_GROUP_ARN} \
+            --attributes Key=stickiness.enabled,Value=false
+
+          # Atualizar as regras de listener do ALB para redirecionar o tráfego para o grupo de destino verde
+          aws elbv2 modify-listener \
+            --listener-arn arn:aws:alb:... \
+            --default-actions Type=forward,TargetGroupArn=${GREEN_TARGET_GROUP_ARN}
 
       # Deploy nova versão no ambiente "azul"
       - name: Deploy Blue Environment with New Version
         run: |
           sed 's/"family": "demo-teste"/"family": "demo-teste-blue"/g; s/v1/v2/g' terraform/ecs/task_definition.tpl.json > blue_task_definition.json
           aws ecs register-task-definition --cli-input-json file://blue_task_definition.json
-          aws ecs describe-task-definition --task-definition demo-teste-blue
           aws ecs update-service \
             --cluster demo-ecs-cluster \
             --service app-blue \
@@ -84,28 +72,15 @@ jobs:
       - name: Test Blue Environment
         run: echo "Run your integration tests here for the Blue environment"
 
-      # Redirecionar tráfego de volta ao ambiente "azul"
+      # Redirecionar tráfego de volta ao ambiente "azul" (target group azul)
       - name: Redirect Traffic to Blue
         run: |
-          aws codedeploy update-deployment-group \
-            --application-name demo-app \
-            --current-deployment-group-name green-group \
-            --new-deployment-group-name blue-group \
-            --load-balancer-info '{
-              "targetGroupPairInfoList": [
-                {
-                  "targetGroups": [
-                    {"name": "blue-target-group"},
-                    {"name": "green-target-group"}
-                  ],
-                  "prodTrafficRoute": {
-                    "listenerArns": ["arn:aws:alb:..."]
-                  }
-                }
-              ]
-            }'
+          # Atualizar as regras de listener do ALB para redirecionar o tráfego para o grupo de destino azul
+          aws elbv2 modify-listener \
+            --listener-arn arn:aws:alb:... \
+            --default-actions Type=forward,TargetGroupArn=${BLUE_TARGET_GROUP_ARN}
 
-      # Escalar para zero o ambiente "verde" após o tráfego ser redirecionado
+      # Encerrar ambiente "verde" após o tráfego ser redirecionado para o azul
       - name: Scale Down Green Environment
         run: |
           aws ecs update-service \
