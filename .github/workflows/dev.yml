@@ -1,9 +1,22 @@
-name: "DEV DEPLOY"
+name: "Blue-Green Deployment"
 
 on:
   push:
-    branches:
-      - dev
+    branches: [ dev ]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag to deploy'
+        required: true
+        default: 'v2'
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: DevCluster
+  SERVICE_NAME: app
+  DOCKER_IMAGE: 03021914/blue-green:v2
+  TASK_FAMILY: demo-teste
+  ALB_NAME: demo-alb
 
 permissions:
   id-token: write
@@ -19,17 +32,12 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
-          aws-region: us-east-1
-
-      - name: Define Variables
-        id: vars
-        run: |
-          echo "IMAGE=03021914/blue-green:v2" >> $GITHUB_ENV
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Get current target group
         id: target-group
         run: |
-          PROD_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5000`].ListenerArn' --output text)
+          PROD_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names ${{ env.ALB_NAME }} --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5000`].ListenerArn' --output text)
           CURRENT_TARGET_GROUP=$(aws elbv2 describe-listeners --listener-arns $PROD_LISTENER_ARN --query 'Listeners[0].DefaultActions[0].ForwardConfig.TargetGroups[0].TargetGroupArn' --output text)
           
           if [[ $CURRENT_TARGET_GROUP == *"blue"* ]]; then
@@ -43,32 +51,30 @@ jobs:
       - name: Register new task definition
         id: register-task
         run: |
-          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition demo-teste --query 'taskDefinition' --output json)
-          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "${{ env.IMAGE }}" '.containerDefinitions[0].image = $IMAGE' | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ env.TASK_FAMILY }} --query 'taskDefinition' --output json)
+          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "${{ env.DOCKER_IMAGE }}" '.containerDefinitions[0].image = $IMAGE' | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION" --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
 
       - name: Update ECS Service for test (port 5001)
         run: |
           aws ecs update-service \
-            --cluster DevCluster \
-            --service app \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service ${{ env.SERVICE_NAME }} \
             --task-definition ${{ env.TASK_DEF_ARN }} \
             --force-new-deployment
 
       - name: Wait for service stability on test
         run: |
           aws ecs wait services-stable \
-            --cluster DevCluster \
-            --services app
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --services ${{ env.SERVICE_NAME }}
 
       - name: Update test listener (port 5001)
         run: |
-          TEST_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5001`].ListenerArn' --output text)
-              
-          # List all target groups and filter for the one that starts with green-
-          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --query 'TargetGroups[?starts_with(TargetGroupName, `green-`)].TargetGroupArn' --output text)
-              
+          TEST_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names ${{ env.ALB_NAME }} --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5001`].ListenerArn' --output text)
+          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --query 'TargetGroups[?starts_with(TargetGroupName, `${{ steps.target-group.outputs.target }}-`)].TargetGroupArn' --output text)
+          
           aws elbv2 modify-listener \
             --listener-arn $TEST_LISTENER_ARN \
             --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
@@ -78,7 +84,7 @@ jobs:
           echo "Waiting for 60 seconds for health checks..."
           sleep 60
           
-          PROD_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5000`].ListenerArn' --output text)
+          PROD_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names ${{ env.ALB_NAME }} --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5000`].ListenerArn' --output text)
           TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names ${{ steps.target-group.outputs.target }} --query 'TargetGroups[0].TargetGroupArn' --output text)
           
           aws elbv2 modify-listener \
@@ -88,17 +94,18 @@ jobs:
       - name: Rollback on failure
         if: failure()
         run: |
-          echo "Rollback: Deploying previous image..."
-          # Register the previous task definition (blue or green, depending on the current state)
-          PREVIOUS_TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition demo-teste --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Rollback: Deploying previous version..."
+          
+          # Register the previous task definition
+          PREVIOUS_TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition ${{ env.TASK_FAMILY }} --query 'taskDefinition.taskDefinitionArn' --output text)
           aws ecs update-service \
-            --cluster DevCluster \
-            --service app \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service ${{ env.SERVICE_NAME }} \
             --task-definition $PREVIOUS_TASK_DEF_ARN \
             --force-new-deployment
 
-          # Revert listener back to the previous target group (either blue or green)
-          PROD_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5000`].ListenerArn' --output text)
+          # Revert listener back to the previous target group
+          PROD_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names ${{ env.ALB_NAME }} --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5000`].ListenerArn' --output text)
           TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names ${{ steps.target-group.outputs.current }} --query 'TargetGroups[0].TargetGroupArn' --output text)
           
           aws elbv2 modify-listener \
