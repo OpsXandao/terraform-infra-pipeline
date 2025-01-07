@@ -13,31 +13,41 @@ jobs:
   blue-green-deploy:
     runs-on: ubuntu-latest
     steps:
+      # Checkout do repositório
       - uses: actions/checkout@v3
 
+      # Configuração de credenciais AWS
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
 
+      # Registrar task definition para o ambiente "verde"
       - name: Register Green Task Definition
         run: |
           sed 's/"family": "demo-teste"/"family": "demo-teste-green"/g' terraform/ecs/task_definition.tpl.json > green_task_definition.json
           aws ecs register-task-definition --cli-input-json file://green_task_definition.json
           aws ecs describe-task-definition --task-definition demo-teste-green
 
-      - name: Update Green Service
+      # Criar ou Atualizar o serviço "verde"
+      - name: Create or Update Green Service
         run: |
-          aws ecs update-service \
+          aws ecs describe-services \
             --cluster demo-ecs-cluster \
-            --service app-green \
+            --services app-green || aws ecs create-service \
+            --cluster demo-ecs-cluster \
+            --service-name app-green \
             --task-definition demo-teste-green \
-            --desired-count 1
+            --desired-count 1 \
+            --launch-type EC2 \
+            --load-balancers targetGroupArn=${{ secrets.GREEN_TARGET_GROUP_ARN }},containerName=app,containerPort=5000
 
+      # Testar ambiente "verde"
       - name: Test Green Environment
         run: echo "Run your integration tests here"
 
+      # Redirecionar tráfego para o ambiente "verde"
       - name: Redirect Traffic to Green
         run: |
           aws codedeploy update-deployment-group \
@@ -58,19 +68,23 @@ jobs:
               ]
             }'
 
+      # Deploy nova versão no ambiente "azul"
       - name: Deploy Blue Environment with New Version
         run: |
           sed 's/"family": "demo-teste"/"family": "demo-teste-blue"/g; s/v1/v2/g' terraform/ecs/task_definition.tpl.json > blue_task_definition.json
           aws ecs register-task-definition --cli-input-json file://blue_task_definition.json
+          aws ecs describe-task-definition --task-definition demo-teste-blue
           aws ecs update-service \
             --cluster demo-ecs-cluster \
             --service app-blue \
             --task-definition demo-teste-blue \
             --desired-count 1
 
+      # Testar ambiente "azul"
       - name: Test Blue Environment
         run: echo "Run your integration tests here for the Blue environment"
 
+      # Redirecionar tráfego de volta ao ambiente "azul"
       - name: Redirect Traffic to Blue
         run: |
           aws codedeploy update-deployment-group \
@@ -91,9 +105,23 @@ jobs:
               ]
             }'
 
+      # Escalar para zero o ambiente "verde" após o tráfego ser redirecionado
       - name: Scale Down Green Environment
         run: |
           aws ecs update-service \
             --cluster demo-ecs-cluster \
             --service app-green \
+            --desired-count 0
+          
+      # Rollback se a versão azul falhar
+      - name: Rollback if Blue Deployment Fails
+        if: failure()
+        run: |
+          aws ecs update-service \
+            --cluster demo-ecs-cluster \
+            --service app-green \
+            --desired-count 1
+          aws ecs update-service \
+            --cluster demo-ecs-cluster \
+            --service app-blue \
             --desired-count 0
