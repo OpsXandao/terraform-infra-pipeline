@@ -350,14 +350,7 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
           "elasticloadbalancing:DescribeListeners",
           "elasticloadbalancing:ModifyListener"
         ]
-        Resource = [
-          "arn:aws:ecs:us-east-1:058264525554:cluster/demo-cluster",
-          "arn:aws:ecs:us-east-1:058264525554:service/demo-cluster/green-service",
-          "arn:aws:ecs:us-east-1:058264525554:service/demo-cluster/blue-service",
-          "arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/blue-target-group",
-          "arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-target-group",
-          "arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb"
-        ]
+        Resource = "*"
       },
       {
         Effect = "Allow"
@@ -372,7 +365,6 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
     ]
   })
 }
-
 # Attach policy to GitHub Actions role
 resource "aws_iam_role_policy_attachment" "github_actions_deploy_policy_attachment" {
   role       = "github-actions-OpsXandao-pipeline"
