@@ -344,6 +344,8 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
           "ecs:DeregisterTaskDefinition",
           "ecs:UpdateService",
           "ecs:DescribeServices",
+          "ecs:CreateService",
+          "ecs:DeleteService",
           "elasticloadbalancing:DescribeTargetGroups",
           "elasticloadbalancing:DescribeListeners",
           "elasticloadbalancing:ModifyListener"
@@ -363,7 +365,6 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
     ]
   })
 }
-
 # Attach policy to GitHub Actions role
 resource "aws_iam_role_policy_attachment" "github_actions_deploy_policy_attachment" {
   role       = "github-actions-OpsXandao-pipeline"
