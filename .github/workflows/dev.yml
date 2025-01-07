@@ -13,8 +13,8 @@ on:
 env:
   AWS_REGION: us-east-1
   CLUSTER_NAME: DevCluster
-  BLUE_SERVICE_NAME: app-blue
-  GREEN_SERVICE_NAME: app-green
+  BLUE_SERVICE_NAME: app
+  GREEN_SERVICE_NAME: app
   TASK_FAMILY: demo-teste
   ALB_NAME: demo-alb
   BLUE_IMAGE_TAG: v1
