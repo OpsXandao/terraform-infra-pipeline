@@ -13,10 +13,13 @@ on:
 env:
   AWS_REGION: us-east-1
   CLUSTER_NAME: DevCluster
-  SERVICE_NAME: app
-  DOCKER_IMAGE: 03021914/blue-green:v2
+  BLUE_SERVICE_NAME: app-blue
+  GREEN_SERVICE_NAME: app-green
   TASK_FAMILY: demo-teste
   ALB_NAME: demo-alb
+  BLUE_IMAGE_TAG: v1
+  NEW_IMAGE_TAG: v2
+  TEST_PORT: 5001
 
 permissions:
   id-token: write
@@ -24,90 +27,161 @@ permissions:
 
 jobs:
   deploy:
+    name: Blue-Green Deployment
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
+    - name: Checkout Code
+      uses: actions/checkout@v3
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
-          aws-region: ${{ env.AWS_REGION }}
+    - name: Authenticate with AWS
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
 
-      - name: Get current target group
-        id: target-group
-        run: |
-          PROD_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names ${{ env.ALB_NAME }} --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5000`].ListenerArn' --output text)
-          CURRENT_TARGET_GROUP=$(aws elbv2 describe-listeners --listener-arns $PROD_LISTENER_ARN --query 'Listeners[0].DefaultActions[0].ForwardConfig.TargetGroups[0].TargetGroupArn' --output text)
-          
-          if [[ $CURRENT_TARGET_GROUP == *"blue"* ]]; then
-            echo "current=blue" >> $GITHUB_OUTPUT
-            echo "target=green" >> $GITHUB_OUTPUT
-          else
-            echo "current=green" >> $GITHUB_OUTPUT
-            echo "target=blue" >> $GITHUB_OUTPUT
-          fi
+    # 1. Registra a task definition para o ambiente verde com a imagem v1 (igual ao azul)
+    - name: Register Green Task Definition (v1)
+      id: register_green_task_definition
+      run: |
+        TASK_DEFINITION=$(aws ecs register-task-definition \
+          --family ${{ env.TASK_FAMILY }} \
+          --container-definitions '[{
+            "name": "app",
+            "image": "03021914/blue-green:${{ env.BLUE_IMAGE_TAG }}",
+            "memory": 256,
+            "cpu": 256,
+            "essential": true,
+            "portMappings": [{"containerPort": 5000, "hostPort": 5000}]
+          }]' \
+          --execution-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-exec-role \
+          --task-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-task-role)
+        echo "::set-output name=green_task_definition::$(echo $TASK_DEFINITION | jq -r .taskDefinition.taskDefinitionArn)"
 
-      - name: Register new task definition
-        id: register-task
-        run: |
-          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ env.TASK_FAMILY }} --query 'taskDefinition' --output json)
-          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "${{ env.DOCKER_IMAGE }}" '.containerDefinitions[0].image = $IMAGE' | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
-          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION" --query 'taskDefinition.taskDefinitionArn' --output text)
-          echo "TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
+    # 3. Aguarda a estabilização do ambiente verde
+    - name: Wait for Green Service to Stabilize
+      run: |
+        aws ecs wait services-stable \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --services ${{ env.GREEN_SERVICE_NAME }}
 
-      - name: Update ECS Service for test (port 5001)
-        run: |
-          aws ecs update-service \
-            --cluster ${{ env.CLUSTER_NAME }} \
-            --service ${{ env.SERVICE_NAME }} \
-            --task-definition ${{ env.TASK_DEF_ARN }} \
-            --force-new-deployment
+    # 4. Redireciona o tráfego para o ambiente verde
+    - name: Redirect Traffic to Green
+      run: |
+        aws elbv2 modify-listener \
+          --listener-arn arn:aws:elasticloadbalancing:${{ env.AWS_REGION }}:YOUR_ACCOUNT_ID:listener/app/${{ env.ALB_NAME }}/80 \
+          --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:${{ env.AWS_REGION }}:YOUR_ACCOUNT_ID:targetgroup/green/ID
 
-      - name: Wait for service stability on test
-        run: |
-          aws ecs wait services-stable \
-            --cluster ${{ env.CLUSTER_NAME }} \
-            --services ${{ env.SERVICE_NAME }}
+    # 5. Registra a nova task definition para o ambiente azul com a nova versão (v2)
+    - name: Register Blue Task Definition (v2)
+      id: register_blue_task_definition
+      run: |
+        TASK_DEFINITION=$(aws ecs register-task-definition \
+          --family ${{ env.TASK_FAMILY }} \
+          --container-definitions '[{
+            "name": "app",
+            "image": "03021914/blue-green:${{ github.event.inputs.image_tag }}",
+            "memory": 256,
+            "cpu": 256,
+            "essential": true,
+            "portMappings": [{"containerPort": 5000, "hostPort": 5000}]
+          }]' \
+          --execution-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-exec-role \
+          --task-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-task-role)
+        echo "::set-output name=blue_task_definition::$(echo $TASK_DEFINITION | jq -r .taskDefinition.taskDefinitionArn)"
 
-      - name: Update test listener (port 5001)
-        run: |
-          TEST_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names ${{ env.ALB_NAME }} --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5001`].ListenerArn' --output text)
-          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --query 'TargetGroups[?starts_with(TargetGroupName, `${{ steps.target-group.outputs.target }}-`)].TargetGroupArn' --output text)
-          
-          aws elbv2 modify-listener \
-            --listener-arn $TEST_LISTENER_ARN \
-            --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
+    # 6. Atualiza o ambiente azul para a nova versão v2
+    - name: Update Blue Service to v2
+      id: update_blue_service
+      run: |
+        aws ecs update-service \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --service ${{ env.BLUE_SERVICE_NAME }} \
+          --task-definition ${{ steps.register_blue_task_definition.outputs.blue_task_definition }} \
+          --force-new-deployment
 
-      - name: Health check and switch to production (port 5000)
-        run: |
-          echo "Waiting for 60 seconds for health checks..."
-          sleep 60
-          
-          PROD_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names ${{ env.ALB_NAME }} --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5000`].ListenerArn' --output text)
-          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names ${{ steps.target-group.outputs.target }} --query 'TargetGroups[0].TargetGroupArn' --output text)
-          
-          aws elbv2 modify-listener \
-            --listener-arn $PROD_LISTENER_ARN \
-            --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
+    # 7. Aguarda a estabilização do ambiente azul
+    - name: Wait for Blue Service to Stabilize
+      run: |
+        aws ecs wait services-stable \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --services ${{ env.BLUE_SERVICE_NAME }}
 
-      - name: Rollback on failure
-        if: failure()
-        run: |
-          echo "Rollback: Deploying previous version..."
-          
-          # Register the previous task definition
-          PREVIOUS_TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition ${{ env.TASK_FAMILY }} --query 'taskDefinition.taskDefinitionArn' --output text)
-          aws ecs update-service \
-            --cluster ${{ env.CLUSTER_NAME }} \
-            --service ${{ env.SERVICE_NAME }} \
-            --task-definition $PREVIOUS_TASK_DEF_ARN \
-            --force-new-deployment
+    # 8. Realiza um teste no ambiente azul (smoke test)
+    - name: Smoke Test on Blue
+      id: smoke_test_blue
+      run: |
+        curl -s http://${{ env.ALB_NAME }}.amazonaws.com:5000 | grep "expected-output"
 
-          # Revert listener back to the previous target group
-          PROD_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names ${{ env.ALB_NAME }} --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`5000`].ListenerArn' --output text)
-          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups --names ${{ steps.target-group.outputs.current }} --query 'TargetGroups[0].TargetGroupArn' --output text)
-          
-          aws elbv2 modify-listener \
-            --listener-arn $PROD_LISTENER_ARN \
-            --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
+    # 9. Redireciona o tráfego de volta para o ambiente azul após o sucesso
+    - name: Redirect Traffic Back to Blue
+      if: ${{ success() }}
+      run: |
+        aws elbv2 modify-listener \
+          --listener-arn arn:aws:elasticloadbalancing:${{ env.AWS_REGION }}:YOUR_ACCOUNT_ID:listener/app/${{ env.ALB_NAME }}/80 \
+          --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:${{ env.AWS_REGION }}:YOUR_ACCOUNT_ID:targetgroup/blue/ID
+
+    # 10. Encerra o ambiente verde após o sucesso
+    - name: Deregister and Stop Green Service
+      if: ${{ success() }}
+      run: |
+        aws ecs update-service \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --service ${{ env.GREEN_SERVICE_NAME }} \
+          --desired-count 0
+        aws ecs delete-service \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --service ${{ env.GREEN_SERVICE_NAME }} \
+          --force
+
+    # 11. Rollback para a versão v1 no ambiente azul caso o deploy falhe
+    - name: Rollback Blue to v1
+      if: ${{ failure() }}
+      run: |
+        TASK_DEFINITION=$(aws ecs register-task-definition \
+          --family ${{ env.TASK_FAMILY }} \
+          --container-definitions '[{
+            "name": "app",
+            "image": "03021914/blue-green:${{ env.BLUE_IMAGE_TAG }}",
+            "memory": 256,
+            "cpu": 256,
+            "essential": true,
+            "portMappings": [{"containerPort": 5000, "hostPort": 5000}]
+          }]' \
+          --execution-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-exec-role \
+          --task-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-task-role)
+        aws ecs update-service \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --service ${{ env.BLUE_SERVICE_NAME }} \
+          --task-definition $(echo $TASK_DEFINITION | jq -r .taskDefinition.taskDefinitionArn) \
+          --force-new-deployment
+
+    # 12. Aguarda a estabilização do ambiente azul após o rollback
+    - name: Wait for Rollback Stability
+      if: ${{ failure() }}
+      run: |
+        aws ecs wait services-stable \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --services ${{ env.BLUE_SERVICE_NAME }}
+
+    # 13. Redireciona o tráfego de volta para o azul após o rollback
+    - name: Redirect Traffic Back to Blue After Rollback
+      if: ${{ failure() }}
+      run: |
+        aws elbv2 modify-listener \
+          --listener-arn arn:aws:elasticloadbalancing:${{ env.AWS_REGION }}:YOUR_ACCOUNT_ID:listener/app/${{ env.ALB_NAME }}/80 \
+          --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:${{ env.AWS_REGION }}:YOUR_ACCOUNT_ID:targetgroup/blue/ID
+
+    # 14. Encerra o ambiente verde após rollback
+    - name: Deregister and Stop Green Service After Rollback
+      if: ${{ failure() }}
+      run: |
+        aws ecs update-service \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --service ${{ env.GREEN_SERVICE_NAME }} \
+          --desired-count 0
+        aws ecs delete-service \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --service ${{ env.GREEN_SERVICE_NAME }} \
+          --force
