@@ -1,25 +1,9 @@
-name: "Blue-Green Deployment"
+name: "DEV DEPLOY"
 
 on:
   push:
-    branches: [ dev ]
-  workflow_dispatch:
-    inputs:
-      image_tag:
-        description: 'Docker image tag to deploy'
-        required: true
-        default: 'v2'
-
-env:
-  AWS_REGION: us-east-1
-  CLUSTER_NAME: DevCluster
-  BLUE_SERVICE_NAME: app
-  GREEN_SERVICE_NAME: app
-  TASK_FAMILY: demo-teste
-  ALB_NAME: demo-alb
-  BLUE_IMAGE_TAG: v1
-  NEW_IMAGE_TAG: v2
-  TEST_PORT: 5001
+    branches:
+      - dev
 
 permissions:
   id-token: write
@@ -27,155 +11,21 @@ permissions:
 
 jobs:
   deploy:
-    name: Blue-Green Deployment
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
-        aws-region: us-east-1
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
+          aws-region: us-east-1
 
-    # 1. Recupera a task definition atual (do Azul ou a última registrada)
-    - name: Get Current Task Definition ARN
-      id: get_task_definition
-      run: |
-        CURRENT_TASK_DEFINITION=$(aws ecs describe-services \
-          --cluster ${{ env.CLUSTER_NAME }} \
-          --services ${{ env.GREEN_SERVICE_NAME }} \
-          --query 'services[0].taskDefinition' \
-          --output text)
-        echo "::set-output name=task_definition::$CURRENT_TASK_DEFINITION"
-
-    # 2. Atualiza o ambiente verde para usar a task definition do ambiente azul
-    - name: Update Green Service to Use Blue Image
-      id: update_green_service
-      run: |
-        aws ecs update-service \
-          --cluster ${{ env.CLUSTER_NAME }} \
-          --service ${{ env.GREEN_SERVICE_NAME }} \
-          --task-definition ${{ steps.get_task_definition.outputs.task_definition }} \
-          --force-new-deployment
-
-    # 3. Aguarda a estabilização do serviço verde
-    - name: Wait for Green Service to Stabilize
-      run: |
-        aws ecs wait services-stable \
-          --cluster ${{ env.CLUSTER_NAME }} \
-          --services ${{ env.GREEN_SERVICE_NAME }}
-
-    # 4. Atualiza a task definition do ambiente azul para usar a imagem do ambiente verde
-    - name: Register Blue Task Definition with Green Image
-      id: register_blue_task_definition
-      run: |
-        TASK_DEFINITION=$(aws ecs register-task-definition \
-          --family ${{ env.TASK_FAMILY }} \
-          --container-definitions '[{
-            "name": "app",
-            "image": "03021914/blue-green:${{ github.event.inputs.image_tag }}",
-            "memory": 256,
-            "cpu": 256,
-            "essential": true,
-            "portMappings": [{"containerPort": 5000, "hostPort": 5000}]
-          }]' \
-          --execution-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-exec-role \
-          --task-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-task-role)
-        echo "::set-output name=blue_task_definition::$(echo $TASK_DEFINITION | jq -r .taskDefinition.taskDefinitionArn)"
-
-    # 5. Atualiza o ambiente azul para usar a nova task definition com a imagem verde
-    - name: Update Blue Service to Use Green Image
-      run: |
-        aws ecs update-service \
-          --cluster ${{ env.CLUSTER_NAME }} \
-          --service ${{ env.BLUE_SERVICE_NAME }} \
-          --task-definition ${{ steps.register_blue_task_definition.outputs.blue_task_definition }} \
-          --force-new-deployment
-
-    # 6. Aguarda a estabilização do serviço azul
-    - name: Wait for Blue Service to Stabilize
-      run: |
-        aws ecs wait services-stable \
-          --cluster ${{ env.CLUSTER_NAME }} \
-          --services ${{ env.BLUE_SERVICE_NAME }}
-
-    # 7. Realiza um teste no ambiente azul (smoke test)
-    - name: Smoke Test on Blue
-      id: smoke_test_blue
-      run: |
-        curl -s http://${{ env.ALB_NAME }}.amazonaws.com:5000 | grep "expected-output"
-
-    # 8. Redireciona o tráfego para o ambiente verde após o sucesso
-    - name: Redirect Traffic to Green
-      if: ${{ success() }}
-      run: |
-        aws elbv2 modify-listener \
-          --listener-arn arn:aws:elasticloadbalancing:${{ env.AWS_REGION }}:YOUR_ACCOUNT_ID:listener/app/${{ env.ALB_NAME }}/80 \
-          --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:${{ env.AWS_REGION }}:YOUR_ACCOUNT_ID:targetgroup/green/ID
-
-    # 9. Encerra o ambiente azul após o sucesso
-    - name: Deregister and Stop Blue Service
-      if: ${{ success() }}
-      run: |
-        aws ecs update-service \
-          --cluster ${{ env.CLUSTER_NAME }} \
-          --service ${{ env.BLUE_SERVICE_NAME }} \
-          --desired-count 0
-        aws ecs delete-service \
-          --cluster ${{ env.CLUSTER_NAME }} \
-          --service ${{ env.BLUE_SERVICE_NAME }} \
-          --force
-
-    # 10. Rollback para a versão anterior caso o deploy falhe
-    - name: Rollback Blue to Previous Version
-      if: ${{ failure() }}
-      run: |
-        TASK_DEFINITION=$(aws ecs register-task-definition \
-          --family ${{ env.TASK_FAMILY }} \
-          --container-definitions '[{
-            "name": "app",
-            "image": "03021914/blue-green:${{ env.BLUE_IMAGE_TAG }}",
-            "memory": 256,
-            "cpu": 256,
-            "essential": true,
-            "portMappings": [{"containerPort": 5000, "hostPort": 5000}]
-          }]' \
-          --execution-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-exec-role \
-          --task-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-task-role)
-        aws ecs update-service \
-          --cluster ${{ env.CLUSTER_NAME }} \
-          --service ${{ env.BLUE_SERVICE_NAME }} \
-          --task-definition $(echo $TASK_DEFINITION | jq -r .taskDefinition.taskDefinitionArn) \
-          --force-new-deployment
-
-    # 11. Aguarda a estabilização do ambiente azul após rollback
-    - name: Wait for Rollback Stability
-      if: ${{ failure() }}
-      run: |
-        aws ecs wait services-stable \
-          --cluster ${{ env.CLUSTER_NAME }} \
-          --services ${{ env.BLUE_SERVICE_NAME }}
-
-    # 12. Redireciona o tráfego de volta para o azul após o rollback
-    - name: Redirect Traffic Back to Blue After Rollback
-      if: ${{ failure() }}
-      run: |
-        aws elbv2 modify-listener \
-          --listener-arn arn:aws:elasticloadbalancing:${{ env.AWS_REGION }}:YOUR_ACCOUNT_ID:listener/app/${{ env.ALB_NAME }}/80 \
-          --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:${{ env.AWS_REGION }}:YOUR_ACCOUNT_ID:targetgroup/blue/ID
-
-    # 13. Encerra o ambiente verde após rollback
-    - name: Deregister and Stop Green Service After Rollback
-      if: ${{ failure() }}
-      run: |
-        aws ecs update-service \
-          --cluster ${{ env.CLUSTER_NAME }} \
-          --service ${{ env.GREEN_SERVICE_NAME }} \
-          --desired-count 0
-        aws ecs delete-service \
-          --cluster ${{ env.CLUSTER_NAME }} \
-          --service ${{ env.GREEN_SERVICE_NAME }} \
-          --force
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: .github/workflows/task_defnition.tpl.json
+          service: app
+          cluster: demo-ecs-cluster
+          wait-for-service-stability: true
+          

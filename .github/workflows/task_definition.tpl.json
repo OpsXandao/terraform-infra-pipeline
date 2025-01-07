@@ -1,0 +1,67 @@
+{
+    "taskDefinitionArn": "arn:aws:ecs:us-east-1:058264525554:task-definition/demo-teste:51",
+    "containerDefinitions": [
+        {
+            "name": "app",
+            "image": "03021914/blue-green:v2",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 5000,
+                    "hostPort": 0,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "EXAMPLE",
+                    "value": "example"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/demo",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "app"
+                }
+            },
+            "systemControls": []
+        }
+    ],
+    "family": "demo-teste",
+    "taskRoleArn": "arn:aws:iam::058264525554:role/demo-ecs-task-role20250107184643311900000003",
+    "executionRoleArn": "arn:aws:iam::058264525554:role/demo-ecs-exec-role20250107184643310200000001",
+    "networkMode": "bridge",
+    "revision": 51,
+    "volumes": [],
+    "status": "ACTIVE",
+    "requiresAttributes": [
+        {
+            "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
+        },
+        {
+            "name": "ecs.capability.execution-role-awslogs"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.task-iam-role"
+        }
+    ],
+    "placementConstraints": [],
+    "compatibilities": [
+        "EXTERNAL",
+        "EC2"
+    ],
+    "cpu": "256",
+    "memory": "256",
+    "registeredAt": "2025-01-07T18:46:44.831Z",
+    "registeredBy": "arn:aws:iam::058264525554:user/alexandre.paiva",
+    "enableFaultInjection": false,
+    "tags": []
+}
