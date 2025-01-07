@@ -54,9 +54,8 @@ jobs:
             "essential": true,
             "portMappings": [{"containerPort": 5000, "hostPort": 5000}]
           }]' \
-          --execution-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-exec-role \
-          --task-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/demo-ecs-task-role)
-        echo "::set-output name=green_task_definition::$(echo $TASK_DEFINITION | jq -r .taskDefinition.taskDefinitionArn)"
+          --execution-role-arn $(terraform output -raw ecs_exec_role_arn) \
+          --task-role-arn $(terraform output -raw ecs_task_role_arn))
 
     # 3. Aguarda a estabilização do ambiente verde
     - name: Wait for Green Service to Stabilize
