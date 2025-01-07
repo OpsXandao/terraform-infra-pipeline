@@ -221,6 +221,8 @@ resource "aws_ecs_service" "app" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 2
+  iam_role        = aws_iam_role.ecs_service_role.arn  # Use 'iam_role' em vez de 'service_role' ou 'role'
+
 
   load_balancer {
     target_group_arn = aws_lb_target_group.blue.arn
@@ -288,7 +290,6 @@ resource "aws_iam_role_policy" "ecs_service_role_policy" {
     ]
   })
 }
-
 
 # --- ALB ---
 resource "aws_security_group" "http" {

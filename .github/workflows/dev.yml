@@ -1,5 +1,3 @@
-name: "Blue-Green Deployment"
-
 on:
   push:
     branches: [ dev ]
