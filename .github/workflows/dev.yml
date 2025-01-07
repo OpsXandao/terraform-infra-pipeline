@@ -34,12 +34,11 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v3
 
-    - name: Authenticate with AWS
-      uses: aws-actions/configure-aws-credentials@v2
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+        role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
+        aws-region: us-east-1
 
     # 1. Registra a task definition para o ambiente verde com a imagem v1 (igual ao azul)
     - name: Register Green Task Definition (v1)
