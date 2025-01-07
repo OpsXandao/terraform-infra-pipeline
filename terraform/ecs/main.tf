@@ -348,7 +348,9 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
           "ecs:DeleteService",
           "elasticloadbalancing:DescribeTargetGroups",
           "elasticloadbalancing:DescribeListeners",
-          "elasticloadbalancing:ModifyListener"
+          "elasticloadbalancing:ModifyListener",
+          "elasticloadbalancing:RegisterTargets",  # Permissão para registrar targets
+          "elasticloadbalancing:DeregisterTargets"  # Permissão para desregistrar targets
         ]
         Resource = "*"
       },
@@ -359,12 +361,14 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
         ]
         Resource = [
           "arn:aws:iam::058264525554:role/demo-ecs-exec-role",
-          "arn:aws:iam::058264525554:role/demo-ecs-task-role"
+          "arn:aws:iam::058264525554:role/demo-ecs-task-role",
+          "arn:aws:iam::058264525554:role/demo-ecs-service-role"  # Verifique o role de serviço do ECS
         ]
       }
     ]
   })
 }
+
 # Attach policy to GitHub Actions role
 resource "aws_iam_role_policy_attachment" "github_actions_deploy_policy_attachment" {
   role       = "github-actions-OpsXandao-pipeline"
