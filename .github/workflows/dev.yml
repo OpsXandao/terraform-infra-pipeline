@@ -24,7 +24,7 @@ jobs:
       - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
-          task-definition: .github/workflows/task_defnition.tpl.json
+          task-definition: terraform/ecs/task_definition.tpl.json
           service: app
           cluster: demo-ecs-cluster
           wait-for-service-stability: true
