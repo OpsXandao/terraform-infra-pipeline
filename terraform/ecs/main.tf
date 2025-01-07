@@ -343,7 +343,6 @@ resource "aws_lb_listener" "test" {
     target_group_arn = aws_lb_target_group.green.arn
   }
 }
-# --- GitHub Actions IAM Policy ---
 resource "aws_iam_policy" "github_actions_ecs_policy" {
   name        = "github-actions-ecs-policy"
   description = "GitHub Actions policy for ECS deployments"
@@ -365,8 +364,7 @@ resource "aws_iam_policy" "github_actions_ecs_policy" {
   })
 }
 
-# Attach Policy para o GitHub Actions Role
 resource "aws_iam_role_policy_attachment" "github_actions_ecs_policy_attachment" {
-  role       = "github-actions-OpsXandao-pipeline"
+  role       = "github-actions-OpsXandao-pipeline"  # Nome da role usada no GitHub Actions
   policy_arn = aws_iam_policy.github_actions_ecs_policy.arn
 }

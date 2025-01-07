@@ -42,20 +42,26 @@ jobs:
       - name: Test Green Environment
         run: echo "Run your integration tests here"
 
+      # Defina os valores corretos para os ARN dos target groups
+      - name: Set Target Group ARNs
+        run: |
+          export GREEN_TARGET_GROUP_ARN="arn:aws:elbv2:us-east-1:058264525554:targetgroup/green-target-group"
+          export BLUE_TARGET_GROUP_ARN="arn:aws:elbv2:us-east-1:058264525554:targetgroup/blue-target-group"
+
       # Redirecionar tráfego para o ambiente "verde" (target group verde)
       - name: Redirect Traffic to Green
         run: |
           aws elbv2 modify-target-group-attributes \
-            --target-group-arn ${GREEN_TARGET_GROUP_ARN} \
+            --target-group-arn $GREEN_TARGET_GROUP_ARN \
             --attributes Key=stickiness.enabled,Value=false
           aws elbv2 modify-target-group-attributes \
-            --target-group-arn ${BLUE_TARGET_GROUP_ARN} \
+            --target-group-arn $BLUE_TARGET_GROUP_ARN \
             --attributes Key=stickiness.enabled,Value=false
 
           # Atualizar as regras de listener do ALB para redirecionar o tráfego para o grupo de destino verde
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:alb:... \
-            --default-actions Type=forward,TargetGroupArn=${GREEN_TARGET_GROUP_ARN}
+            --listener-arn arn:aws:alb:us-east-1:058264525554:listener/app/my-alb/1234567890abcdef \
+            --default-actions Type=forward,TargetGroupArn=$GREEN_TARGET_GROUP_ARN
 
       # Deploy nova versão no ambiente "azul"
       - name: Deploy Blue Environment with New Version
@@ -77,8 +83,8 @@ jobs:
         run: |
           # Atualizar as regras de listener do ALB para redirecionar o tráfego para o grupo de destino azul
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:alb:... \
-            --default-actions Type=forward,TargetGroupArn=${BLUE_TARGET_GROUP_ARN}
+            --listener-arn arn:aws:alb:us-east-1:058264525554:listener/app/my-alb/1234567890abcdef \
+            --default-actions Type=forward,TargetGroupArn=$BLUE_TARGET_GROUP_ARN
 
       # Encerrar ambiente "verde" após o tráfego ser redirecionado para o azul
       - name: Scale Down Green Environment
