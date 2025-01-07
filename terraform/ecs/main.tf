@@ -236,6 +236,60 @@ resource "aws_ecs_service" "app" {
     ]
   }
 }
+# --- ECS Service Role ---
+data "aws_iam_policy_document" "ecs_service_assume_role_policy" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    effect  = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["ecs.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ecs_service_role" {
+  name_prefix        = "demo-ecs-service-role"
+  assume_role_policy = data.aws_iam_policy_document.ecs_service_assume_role_policy.json
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_service_role_policy" {
+  role       = aws_iam_role.ecs_service_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole"
+}
+
+resource "aws_iam_role_policy" "ecs_service_role_policy" {
+  name   = "ecs-service-role-policy"
+  role   = aws_iam_role.ecs_service_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = [
+          "elasticloadbalancing:DescribeTargetGroups",
+          "elasticloadbalancing:DescribeListeners",
+          "elasticloadbalancing:RegisterTargets",
+          "elasticloadbalancing:DeregisterTargets",
+          "elasticloadbalancing:ModifyListener"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
+        Resource = [
+          aws_iam_role.ecs_exec_role.arn,
+          aws_iam_role.ecs_task_role.arn,
+          aws_iam_role.ecs_service_role.arn
+        ]
+      }
+    ]
+  })
+}
+
+
 # --- ALB ---
 resource "aws_security_group" "http" {
   name_prefix = "http-sg-"
