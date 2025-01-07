@@ -346,10 +346,19 @@ resource "aws_iam_policy" "github_actions_deploy_policy" {
           "ecs:DescribeServices",
           "elasticloadbalancing:DescribeTargetGroups",
           "elasticloadbalancing:DescribeListeners",
-          "elasticloadbalancing:ModifyListener",
-          "iam:PassRole"
+          "elasticloadbalancing:ModifyListener"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:PassRole"
+        ]
+        Resource = [
+          "arn:aws:iam::058264525554:role/demo-ecs-exec-role",
+          "arn:aws:iam::058264525554:role/demo-ecs-task-role"
+        ]
       }
     ]
   })
