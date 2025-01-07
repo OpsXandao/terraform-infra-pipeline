@@ -307,7 +307,7 @@ resource "aws_lb_target_group" "green" {
 # Listener para produção
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.id
-  port              = 5000
+  port              = 80
   protocol          = "HTTP"
 
   default_action {
@@ -326,73 +326,6 @@ resource "aws_lb_listener" "test" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.green.arn 
   }
-}
-
-# --- IAM Role para CodeDeploy ---
-data "aws_iam_policy_document" "codedeploy_assume_role" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    effect  = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["codedeploy.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_iam_role" "codedeploy" {
-  name_prefix        = "codedeploy-service-role-"
-  assume_role_policy = data.aws_iam_policy_document.codedeploy_assume_role.json
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# Política personalizada para CodeDeploy ECS
-resource "aws_iam_role_policy" "codedeploy_policy" {
-  name_prefix = "codedeploy-ecs-policy-"
-  role        = aws_iam_role.codedeploy.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "ecs:DescribeServices",
-          "ecs:CreateTaskSet",
-          "ecs:UpdateServicePrimaryTaskSet",
-          "ecs:DeleteTaskSet",
-          "elasticloadbalancing:DescribeTargetGroups",
-          "elasticloadbalancing:DescribeListeners",
-          "elasticloadbalancing:ModifyListener",
-          "elasticloadbalancing:DescribeRules",
-          "elasticloadbalancing:ModifyRule",
-          "lambda:InvokeFunction",
-          "cloudwatch:DescribeAlarms",
-          "sns:Publish",
-          "s3:GetObject",
-          "s3:GetObjectVersion",
-          "iam:PassRole" // Adicionado
-        ],
-        Resource = "*"
-      },
-      {
-        Effect = "Allow",
-        Action = "iam:PassRole",
-        Resource = aws_iam_role.ecs_exec_role.arn // Permissão específica para passar o papel ecs_exec_role
-      }
-    ]
-  })
-}
-
-
-# Attach Policy para o IAM Role CodeDeploy
-resource "aws_iam_role_policy_attachment" "codedeploy_policy_attachment_1" {
-  role       = aws_iam_role.codedeploy.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"  # Se você deseja uma política padrão, ou use sua política personalizada
 }
 
 # --- GitHub Actions IAM Policy ---
