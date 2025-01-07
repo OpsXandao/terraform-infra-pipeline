@@ -1,4 +1,4 @@
-name: "DEV DEPLOY"
+name: "Blue/Green Deployment"
 
 on:
   push:
@@ -10,22 +10,111 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  blue-green-deploy:
     runs-on: ubuntu-latest
     steps:
+      # Checkout do repositório
       - uses: actions/checkout@v3
 
+      # Configuração de credenciais AWS
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
 
-      - name: Deploy to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: terraform/ecs/task_definition.tpl.json
-          service: app
-          cluster: demo-ecs-cluster
-          wait-for-service-stability: true
+      # Registrar task definition para o ambiente "verde"
+      - name: Register Green Task Definition
+        run: |
+          sed 's/v2/v1/g' terraform/ecs/task_definition.tpl.json > green_task_definition.json
+          aws ecs register-task-definition --cli-input-json file://green_task_definition.json
+
+      # Atualizar serviço "verde"
+      - name: Update Green Service
+        run: |
+          aws ecs update-service \
+            --cluster demo-ecs-cluster \
+            --service app-green \
+            --task-definition demo-teste-green \
+            --desired-count 1
+
+      # Testar ambiente "verde"
+      - name: Test Green Environment
+        run: echo "Run your integration tests here"
+
+      # Redirecionar tráfego para o ambiente "verde"
+      - name: Redirect Traffic to Green
+        run: |
+          aws codedeploy update-deployment-group \
+            --application-name demo-app \
+            --current-deployment-group-name blue-group \
+            --new-deployment-group-name green-group \
+            --load-balancer-info '{
+              "targetGroupPairInfoList": [
+                {
+                  "targetGroups": [
+                    {"name": "green-target-group"},
+                    {"name": "blue-target-group"}
+                  ],
+                  "prodTrafficRoute": {
+                    "listenerArns": ["arn:aws:alb:..."]
+                  }
+                }
+              ]
+            }'
+
+      # Deploy nova versão no ambiente "azul"
+      - name: Deploy Blue Environment with New Version
+        run: |
+          sed 's/v1/v2/g' terraform/ecs/task_definition.tpl.json > blue_task_definition.json
+          aws ecs register-task-definition --cli-input-json file://blue_task_definition.json
+          aws ecs update-service \
+            --cluster demo-ecs-cluster \
+            --service app-blue \
+            --task-definition demo-teste-blue \
+            --desired-count 1
+
+      # Verificar e testar ambiente "azul"
+      - name: Test Blue Environment
+        run: echo "Run your integration tests here for the Blue environment"
+
+      # Redirecionar tráfego de volta ao ambiente "azul"
+      - name: Redirect Traffic to Blue
+        run: |
+          aws codedeploy update-deployment-group \
+            --application-name demo-app \
+            --current-deployment-group-name green-group \
+            --new-deployment-group-name blue-group \
+            --load-balancer-info '{
+              "targetGroupPairInfoList": [
+                {
+                  "targetGroups": [
+                    {"name": "blue-target-group"},
+                    {"name": "green-target-group"}
+                  ],
+                  "prodTrafficRoute": {
+                    "listenerArns": ["arn:aws:alb:..."]
+                  }
+                }
+              ]
+            }'
+
+      # Encerrar ambiente "verde"
+      - name: Scale Down Green Environment
+        run: |
+          aws ecs update-service \
+            --cluster demo-ecs-cluster \
+            --service app-green \
+            --desired-count 0
+            - name: Rollback if Blue Deployment Fails
+            if: failure()
+            run: |
+              aws ecs update-service \
+                --cluster demo-ecs-cluster \
+                --service app-blue \
+                --desired-count 0
+              aws ecs update-service \
+                --cluster demo-ecs-cluster \
+                --service app-green \
+                --desired-count 1
           
