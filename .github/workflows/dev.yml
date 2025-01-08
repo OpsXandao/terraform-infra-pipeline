@@ -1,13 +1,20 @@
-name: "DEV DEPLOY"
+name: "Blue-Green Deployment"
 
 on:
   push:
     branches:
-      - dev
+      - dev  # Change this to your production branch
 
 permissions:
   id-token: write
   contents: read
+
+env:
+  CLUSTER_NAME: dev-demo
+  SERVICE_NAME: app
+  TASK_DEFINITION_FILE: terraform/ecs/task_definition.tpl.json
+  BLUE_LISTENER_PORT: 80
+  TEST_LISTENER_PORT: 5001
 
 jobs:
   deploy:
@@ -21,10 +28,113 @@ jobs:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
 
-      - name: Deploy to ECS
+      - name: Get current task definition
+        id: get-taskdef
+        run: |
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition demo-teste \
+            --query 'taskDefinition' \
+            --output json)
+          echo "TASK_DEF=$TASK_DEF" >> $GITHUB_OUTPUT
+
+      - name: Create green task definition
+        id: green-taskdef
+        run: |
+          # Get the current image version and create green task definition
+          CURRENT_IMAGE=$(echo '${{ steps.get-taskdef.outputs.TASK_DEF }}' | jq -r '.containerDefinitions[0].image')
+          echo "Creating green task definition with image: $CURRENT_IMAGE"
+          
+          # Create new task definition for green deployment
+          TASKDEF_JSON=$(cat ${{ env.TASK_DEFINITION_FILE }})
+          NEW_TASKDEF=$(echo $TASKDEF_JSON | jq --arg IMG "$CURRENT_IMAGE" '.containerDefinitions[0].image = $IMG')
+          echo "$NEW_TASKDEF" > green-task-def.json
+          echo "GREEN_TASKDEF_FILE=green-task-def.json" >> $GITHUB_OUTPUT
+
+      - name: Deploy green environment
+        id: deploy-green
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
-          task-definition: terraform/ecs/task_definition.tpl.json
-          service: app
-          cluster: demo-ecs-cluster
+          task-definition: ${{ steps.green-taskdef.outputs.GREEN_TASKDEF_FILE }}
+          service: ${{ env.SERVICE_NAME }}
+          cluster: ${{ env.CLUSTER_NAME }}
           wait-for-service-stability: true
+
+      - name: Health check green deployment
+        id: health-check
+        run: |
+          echo "Performing health check on green deployment..."
+          # Add your health check logic here
+          # For example, curl the test listener endpoint
+          sleep 30  # Wait for service to be ready
+          TEST_URL=$(aws elbv2 describe-listeners \
+            --listener-arns $(aws elbv2 describe-listeners \
+              --load-balancer-arn $(aws elbv2 describe-load-balancers \
+                --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) \
+              --query 'Listeners[?Port==`5001`].ListenerArn' --output text) \
+            --query 'Listeners[0].DefaultActions[0].ForwardConfig.TargetGroups[0].TargetGroupArn' \
+            --output text)
+          
+          # Simplified health check - you might want to make this more robust
+          HEALTH_STATUS=$(aws elbv2 describe-target-health \
+            --target-group-arn $TEST_URL \
+            --query 'TargetHealthDescriptions[*].TargetHealth.State' \
+            --output text)
+          
+          if [[ "$HEALTH_STATUS" == *"healthy"* ]]; then
+            echo "Green deployment is healthy"
+            echo "STATUS=success" >> $GITHUB_OUTPUT
+          else
+            echo "Green deployment is unhealthy"
+            echo "STATUS=failure" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Update blue environment
+        if: steps.health-check.outputs.STATUS == 'success'
+        id: update-blue
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ env.TASK_DEFINITION_FILE }}
+          service: ${{ env.SERVICE_NAME }}
+          cluster: ${{ env.CLUSTER_NAME }}
+          wait-for-service-stability: true
+
+      - name: Switch traffic to blue
+        if: steps.update-blue.outcome == 'success'
+        run: |
+          echo "Switching traffic back to blue environment..."
+          LISTENER_ARN=$(aws elbv2 describe-listeners \
+            --load-balancer-arn $(aws elbv2 describe-load-balancers \
+              --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) \
+            --query 'Listeners[?Port==`80`].ListenerArn' --output text)
+          
+          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups \
+            --names main \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text)
+          
+          aws elbv2 modify-listener \
+            --listener-arn $LISTENER_ARN \
+            --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed, rolling back..."
+          
+          # Get the previous task definition
+          PREVIOUS_TASKDEF=$(echo '${{ steps.get-taskdef.outputs.TASK_DEF }}' | jq -r '.taskDefinitionArn')
+          
+          # Update the service to use the previous task definition
+          aws ecs update-service \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service ${{ env.SERVICE_NAME }} \
+            --task-definition $PREVIOUS_TASKDEF \
+            --force-new-deployment
+          
+          # Wait for stability
+          aws ecs wait services-stable \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --services ${{ env.SERVICE_NAME }}
+          
+          echo "Rollback completed successfully"
