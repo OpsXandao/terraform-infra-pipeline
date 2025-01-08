@@ -1,0 +1,67 @@
+{
+    "deploymentInfo": {
+        "applicationName": "ecs-demo-app",
+        "deploymentGroupName": "ecs-deployment-group",
+        "deploymentConfigName": "CodeDeployDefault.ECSAllAtOnce",
+        "deploymentId": "d-1SV6LE5EA",
+        "revision": {
+            "revisionType": "AppSpecContent",
+            "appSpecContent": {
+                "sha256": "bffaa3515920aae9425b8ca8c5ce1e55a53e5bdc8c293d28583ee7efe49120db"
+            }
+        },
+        "status": "InProgress",
+        "createTime": "2025-01-03T10:55:02.997000-03:00",
+        "creator": "user",
+        "ignoreApplicationStopFailures": false,
+        "autoRollbackConfiguration": {
+            "enabled": true,
+            "events": [
+                "DEPLOYMENT_FAILURE"
+            ]
+        },
+        "updateOutdatedInstancesOnly": false,
+        "deploymentStyle": {
+            "deploymentType": "BLUE_GREEN",
+            "deploymentOption": "WITH_TRAFFIC_CONTROL"
+        },
+        "instanceTerminationWaitTimeStarted": false,
+        "blueGreenDeploymentConfiguration": {
+            "terminateBlueInstancesOnDeploymentSuccess": {
+                "action": "TERMINATE",
+                "terminationWaitTimeInMinutes": 5
+            },
+            "deploymentReadyOption": {
+                "actionOnTimeout": "CONTINUE_DEPLOYMENT",
+                "waitTimeInMinutes": 0
+            }
+        },
+        "loadBalancerInfo": {
+            "targetGroupPairInfoList": [
+                {
+                    "targetGroups": [
+                        {
+                            "name": "blue-2025010313390611250000000c"
+                        },
+                        {
+                            "name": "green-2025010313390610810000000b"
+                        }
+                    ],
+                    "prodTrafficRoute": {
+                        "listenerArns": [
+                            "arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/92f5781d40f15edf/4b657a50cbddf9ff"
+                        ]
+                    },
+                    "testTrafficRoute": {
+                        "listenerArns": [
+                            "arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/92f5781d40f15edf/ca2a5448d0a8a69e"
+                        ]
+                    }
+                }
+            ]
+        },
+        "fileExistsBehavior": "DISALLOW",
+        "deploymentStatusMessages": [],
+        "computePlatform": "ECS"
+    }
+}
