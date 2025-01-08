@@ -37,7 +37,7 @@ resource "aws_security_group" "ecs_node_sg" {
   vpc_id      = var.vpc_id
 
   ingress {
-    from_port       = 0
+    from_port       = 32768
     to_port         = 65535
     protocol        = "tcp"
     security_groups = [aws_security_group.http.id]
@@ -74,7 +74,6 @@ resource "aws_launch_template" "ecs_ec2" {
 
 # --- ECS ASG ---
 resource "aws_autoscaling_group" "ecs" {
-    target_group_arns    = [aws_lb_target_group.blue.arn]  # Add this line back
   name_prefix         = "demo-ecs-asg-"
   vpc_zone_identifier = var.public_subnet_ids
   min_size           = 1
@@ -84,6 +83,11 @@ resource "aws_autoscaling_group" "ecs" {
   health_check_grace_period = 0
   health_check_type         = "EC2"
   protect_from_scale_in     = true
+
+  target_group_arns = [
+    aws_lb_target_group.blue.arn,
+    aws_lb_target_group.green.arn
+  ]
 
   launch_template {
     id      = aws_launch_template.ecs_ec2.id
@@ -181,7 +185,11 @@ resource "aws_ecs_task_definition" "app" {
     name         = "app",
     image        = var.container_image,
     essential    = true,
-    portMappings = [{ containerPort = 5000 }],
+    portMappings = [{ 
+      containerPort = 5000,
+      hostPort      = 0  # Dynamic port mapping
+    }],
+ 
 
     environment = [
       { name = "EXAMPLE", value = "example" }
@@ -219,7 +227,7 @@ resource "aws_security_group" "ecs_task" {
   }
 }
 
-# Alterações nos serviços ECS
+# SERVICE ECS
 resource "aws_ecs_service" "app" {
   name            = "app"
   cluster         = aws_ecs_cluster.main.id
@@ -235,6 +243,12 @@ resource "aws_ecs_service" "app" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.blue.arn
+    container_name   = "app"
+    container_port   = 5000
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.green.arn
     container_name   = "app"
     container_port   = 5000
   }
@@ -345,9 +359,7 @@ resource "aws_lb_listener" "test" {
 }
 # --- GitHub Actions IAM Policy ---
 resource "aws_iam_policy" "github_actions_ecs_policy" {
-  name        = "github-actions-ecs-policy"
-  description = "GitHub Actions policy for ECS deployments"
-  policy      = jsonencode({
+  policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -357,7 +369,11 @@ resource "aws_iam_policy" "github_actions_ecs_policy" {
           "ecs:UpdateService",
           "ecs:RegisterTaskDefinition",
           "ecs:DescribeTaskDefinition",
-          "iam:PassRole"
+          "iam:PassRole",
+          "elasticloadbalancing:DescribeTargetGroups",
+          "elasticloadbalancing:DescribeLoadBalancers",
+          "elasticloadbalancing:ModifyListener",
+          "elasticloadbalancing:DescribeListeners"
         ]
         Resource = "*"
       }
