@@ -148,34 +148,35 @@ jobs:
           
           echo "STATUS=success" >> $GITHUB_OUTPUT
 
-      - name: Switch production traffic
-        if: success()
-        run: |
-          # Get target group ARNs
-          BLUE_TG_ARN=$(aws elbv2 describe-target-groups \
-            --names main \
-            --query 'TargetGroups[0].TargetGroupArn' \
-            --output text)
-          
-          GREEN_TG_ARN=$(aws elbv2 describe-target-groups \
-            --names green \
-            --query 'TargetGroups[0].TargetGroupArn' \
-            --output text)
-          
-          # Determine current and new target groups
-          if [ "$CURRENT_PROD_TG_ARN" = "$BLUE_TG_ARN" ]; then
-            NEW_PROD_TG_ARN=$GREEN_TG_ARN
-          else
-            NEW_PROD_TG_ARN=$BLUE_TG_ARN
-          fi
-          
-          # Switch production listener to new target group
-          aws elbv2 modify-listener \
-            --listener-arn $PROD_LISTENER_ARN \
-            --default-actions Type=forward,TargetGroupArn=$NEW_PROD_TG_ARN
-          
-          echo "Production traffic switched to new target group"
-
+          - name: Switch production traffic
+          if: success()
+          run: |
+            # Get target group ARNs - using prefix matching since Terraform adds random suffix
+            BLUE_TG_ARN=$(aws elbv2 describe-target-groups \
+              --query 'TargetGroups[?starts_with(TargetGroupName, `main`)].TargetGroupArn' \
+              --output text)
+            
+            GREEN_TG_ARN=$(aws elbv2 describe-target-groups \
+              --query 'TargetGroups[?starts_with(TargetGroupName, `green`)].TargetGroupArn' \
+              --output text)
+            
+            # Verify target groups were found
+            if [ -z "$BLUE_TG_ARN" ] || [ -z "$GREEN_TG_ARN" ]; then
+              echo "Failed to find target groups"
+              exit 1
+            fi
+            
+            # Rest of the switch logic remains the same
+            if [ "$CURRENT_PROD_TG_ARN" = "$BLUE_TG_ARN" ]; then
+              NEW_PROD_TG_ARN=$GREEN_TG_ARN
+            else
+              NEW_PROD_TG_ARN=$BLUE_TG_ARN
+            fi
+            
+            aws elbv2 modify-listener \
+              --listener-arn $PROD_LISTENER_ARN \
+              --default-actions Type=forward,TargetGroupArn=$NEW_PROD_TG_ARN
+              
       - name: Rollback on failure
         if: failure()
         run: |
