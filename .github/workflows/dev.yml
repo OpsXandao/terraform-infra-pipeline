@@ -109,74 +109,39 @@ jobs:
             sleep 30
           done
 
-      - name: Health check deployment
-        id: health-check
-        run: |
-          echo "Performing health checks..."
-          ALB_DNS=$(aws elbv2 describe-load-balancers \
-            --names demo-alb \
-            --query 'LoadBalancers[0].DNSName' \
-            --output text)
-          
-          MAX_RETRIES=5
-          RETRY_COUNT=0
-          
-          # Check both production and test endpoints
-          for PORT in 80 5001; do
-            echo "Testing port $PORT..."
-            RETRY_COUNT=0
-            
-            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-              HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$ALB_DNS:$PORT/")
-              
-              if [ "$HTTP_STATUS" -eq 200 ]; then
-                echo "Health check passed on port $PORT!"
-                break
-              fi
-              
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              echo "Health check attempt $RETRY_COUNT failed on port $PORT. Status: $HTTP_STATUS"
-              
-              if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-                echo "Health check failed after $MAX_RETRIES attempts on port $PORT"
-                exit 1
-              fi
-              
-              sleep 30
-            done
-          done
-          
-          echo "STATUS=success" >> $GITHUB_OUTPUT
-
-          - name: Switch production traffic
-          if: success()
+          - name: Health check deployment
+          id: health-check
           run: |
-            # Get target group ARNs - using prefix matching since Terraform adds random suffix
-            BLUE_TG_ARN=$(aws elbv2 describe-target-groups \
-              --query 'TargetGroups[?starts_with(TargetGroupName, `main`)].TargetGroupArn' \
+            echo "Performing health checks..."
+            ALB_DNS=$(aws elbv2 describe-load-balancers \
+              --names demo-alb \
+              --query 'LoadBalancers[0].DNSName' \
               --output text)
             
-            GREEN_TG_ARN=$(aws elbv2 describe-target-groups \
-              --query 'TargetGroups[?starts_with(TargetGroupName, `green`)].TargetGroupArn' \
-              --output text)
+            MAX_RETRIES=5
             
-            # Verify target groups were found
-            if [ -z "$BLUE_TG_ARN" ] || [ -z "$GREEN_TG_ARN" ]; then
-              echo "Failed to find target groups"
-              exit 1
-            fi
+            for PORT in 80 5001; do
+              echo "Testing port $PORT..."
+              for ((i=1; i<=MAX_RETRIES; i++)); do
+                HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$ALB_DNS:$PORT/")
+                
+                if [ "$HTTP_STATUS" -eq 200 ]; then
+                  echo "Health check passed on port $PORT!"
+                  break
+                fi
+                
+                if [ "$i" -eq $MAX_RETRIES ]; then
+                  echo "Health check failed after $MAX_RETRIES attempts on port $PORT"
+                  exit 1
+                fi
+                
+                echo "Health check attempt $i failed on port $PORT. Status: $HTTP_STATUS"
+                sleep 30
+              done
+            done
             
-            # Rest of the switch logic remains the same
-            if [ "$CURRENT_PROD_TG_ARN" = "$BLUE_TG_ARN" ]; then
-              NEW_PROD_TG_ARN=$GREEN_TG_ARN
-            else
-              NEW_PROD_TG_ARN=$BLUE_TG_ARN
-            fi
-            
-            aws elbv2 modify-listener \
-              --listener-arn $PROD_LISTENER_ARN \
-              --default-actions Type=forward,TargetGroupArn=$NEW_PROD_TG_ARN
-              
+            echo "STATUS=success" >> $GITHUB_OUTPUT
+
       - name: Rollback on failure
         if: failure()
         run: |
