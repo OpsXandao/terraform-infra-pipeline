@@ -3,7 +3,7 @@ name: "Blue-Green Deployment"
 on:
   push:
     branches:
-      - dev  # Change this to your production branch
+      - dev
 
 permissions:
   id-token: write
@@ -35,19 +35,22 @@ jobs:
             --task-definition demo-teste \
             --query 'taskDefinition' \
             --output json)
-          echo "TASK_DEF=$TASK_DEF" >> $GITHUB_OUTPUT
+          # Store full task definition
+          echo "TASK_DEF=$TASK_DEF" >> $GITHUB_ENV
+          # Get the current image separately
+          CURRENT_IMAGE=$(echo $TASK_DEF | jq -r '.containerDefinitions[0].image')
+          echo "CURRENT_IMAGE=$CURRENT_IMAGE" >> $GITHUB_ENV
+          # Store the task definition ARN
+          TASK_DEF_ARN=$(echo $TASK_DEF | jq -r '.taskDefinitionArn')
+          echo "TASK_DEF_ARN=$TASK_DEF_ARN" >> $GITHUB_ENV
 
       - name: Create green task definition
         id: green-taskdef
         run: |
-          # Get the current image version and create green task definition
-          CURRENT_IMAGE=$(echo '${{ steps.get-taskdef.outputs.TASK_DEF }}' | jq -r '.containerDefinitions[0].image')
           echo "Creating green task definition with image: $CURRENT_IMAGE"
           
-          # Create new task definition for green deployment
-          TASKDEF_JSON=$(cat ${{ env.TASK_DEFINITION_FILE }})
-          NEW_TASKDEF=$(echo $TASKDEF_JSON | jq --arg IMG "$CURRENT_IMAGE" '.containerDefinitions[0].image = $IMG')
-          echo "$NEW_TASKDEF" > green-task-def.json
+          # Create new task definition for green deployment with current image
+          jq --arg IMG "$CURRENT_IMAGE" '.containerDefinitions[0].image = $IMG' ${{ env.TASK_DEFINITION_FILE }} > green-task-def.json
           echo "GREEN_TASKDEF_FILE=green-task-def.json" >> $GITHUB_OUTPUT
 
       - name: Deploy green environment
@@ -63,73 +66,82 @@ jobs:
         id: health-check
         run: |
           echo "Performing health check on green deployment..."
-          # Add your health check logic here
-          # For example, curl the test listener endpoint
-          sleep 30  # Wait for service to be ready
-          TEST_URL=$(aws elbv2 describe-listeners \
-            --listener-arns $(aws elbv2 describe-listeners \
-              --load-balancer-arn $(aws elbv2 describe-load-balancers \
-                --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) \
-              --query 'Listeners[?Port==`5001`].ListenerArn' --output text) \
-            --query 'Listeners[0].DefaultActions[0].ForwardConfig.TargetGroups[0].TargetGroupArn' \
+          # Wait for service to be ready
+          sleep 30
+          
+          # Get the ALB DNS name
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names demo-alb \
+            --query 'LoadBalancers[0].DNSName' \
             --output text)
           
-          # Simplified health check - you might want to make this more robust
-          HEALTH_STATUS=$(aws elbv2 describe-target-health \
-            --target-group-arn $TEST_URL \
-            --query 'TargetHealthDescriptions[*].TargetHealth.State' \
-            --output text)
+          # Check the health endpoint on test port
+          HEALTH_CHECK_URL="http://$ALB_DNS:5001/"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
           
-          if [[ "$HEALTH_STATUS" == *"healthy"* ]]; then
+          if [ "$HTTP_STATUS" -eq 200 ]; then
             echo "Green deployment is healthy"
             echo "STATUS=success" >> $GITHUB_OUTPUT
           else
-            echo "Green deployment is unhealthy"
+            echo "Green deployment is unhealthy (Status: $HTTP_STATUS)"
             echo "STATUS=failure" >> $GITHUB_OUTPUT
             exit 1
           fi
 
       - name: Update blue environment
         if: steps.health-check.outputs.STATUS == 'success'
-        id: update-blue
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ env.TASK_DEFINITION_FILE }}
-          service: ${{ env.SERVICE_NAME }}
-          cluster: ${{ env.CLUSTER_NAME }}
-          wait-for-service-stability: true
+        run: |
+          # Deploy new version to blue environment
+          NEW_TASKDEF=$(aws ecs register-task-definition \
+            --cli-input-json file://${{ env.TASK_DEFINITION_FILE }} \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          
+          aws ecs update-service \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service ${{ env.SERVICE_NAME }} \
+            --task-definition $NEW_TASKDEF \
+            --force-new-deployment
+
+          # Wait for stability
+          aws ecs wait services-stable \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --services ${{ env.SERVICE_NAME }}
 
       - name: Switch traffic to blue
-        if: steps.update-blue.outcome == 'success'
+        if: success()
         run: |
           echo "Switching traffic back to blue environment..."
+          # Get the listener ARN
           LISTENER_ARN=$(aws elbv2 describe-listeners \
             --load-balancer-arn $(aws elbv2 describe-load-balancers \
-              --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) \
-            --query 'Listeners[?Port==`80`].ListenerArn' --output text)
+              --names demo-alb \
+              --query 'LoadBalancers[0].LoadBalancerArn' \
+              --output text) \
+            --query 'Listeners[?Port==`80`].ListenerArn' \
+            --output text)
           
-          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups \
-            --names main \
+          # Get the blue target group ARN
+          BLUE_TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups \
+            --names "main-*" \
             --query 'TargetGroups[0].TargetGroupArn' \
             --output text)
           
+          # Update the listener
           aws elbv2 modify-listener \
             --listener-arn $LISTENER_ARN \
-            --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
+            --default-actions Type=forward,TargetGroupArn=$BLUE_TARGET_GROUP_ARN
 
       - name: Rollback on failure
         if: failure()
         run: |
           echo "Deployment failed, rolling back..."
           
-          # Get the previous task definition
-          PREVIOUS_TASKDEF=$(echo '${{ steps.get-taskdef.outputs.TASK_DEF }}' | jq -r '.taskDefinitionArn')
-          
-          # Update the service to use the previous task definition
+          # Update service to use previous task definition
           aws ecs update-service \
             --cluster ${{ env.CLUSTER_NAME }} \
             --service ${{ env.SERVICE_NAME }} \
-            --task-definition $PREVIOUS_TASKDEF \
+            --task-definition ${{ env.TASK_DEF_ARN }} \
             --force-new-deployment
           
           # Wait for stability
