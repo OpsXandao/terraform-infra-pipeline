@@ -15,10 +15,12 @@ env:
   TASK_DEFINITION_FILE: terraform/ecs/task_definition.tpl.json
   BLUE_LISTENER_PORT: 80
   TEST_LISTENER_PORT: 5001
+  TIMEOUT_MINUTES: 10
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v3
 
@@ -31,127 +33,144 @@ jobs:
       - name: Get current task definition
         id: get-taskdef
         run: |
-          # Get task definition details and store in files
           aws ecs describe-task-definition \
             --task-definition demo-teste \
             --query 'taskDefinition' \
             --output json > current-task-def.json
           
-          # Extract and store specific values
           echo "CURRENT_IMAGE=$(jq -r '.containerDefinitions[0].image' current-task-def.json)" >> $GITHUB_ENV
-          echo "TASK_DEF_ARN=$(jq -r '.taskDefinitionArn' current-task-def.json)" >> $GITHUB_ENV
           echo "TASK_DEF_FILE=current-task-def.json" >> $GITHUB_OUTPUT
 
-      - name: Create green task definition
-        id: green-taskdef
-        run: |
-          echo "Creating green task definition with image: $CURRENT_IMAGE"
-          
-          # Read the template and update image
-          jq --arg IMG "$CURRENT_IMAGE" '.containerDefinitions[0].image = $IMG' ${{ env.TASK_DEFINITION_FILE }} > green-task-def.json
-          echo "GREEN_TASKDEF_FILE=green-task-def.json" >> $GITHUB_OUTPUT
-
-      - name: Deploy green environment
-        id: deploy-green
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ steps.green-taskdef.outputs.GREEN_TASKDEF_FILE }}
-          service: ${{ env.SERVICE_NAME }}
-          cluster: ${{ env.CLUSTER_NAME }}
-          wait-for-service-stability: true
-
-      - name: Health check green deployment
-        id: health-check
-        run: |
-          echo "Performing health check on green deployment..."
-          sleep 30
-          
-          ALB_DNS=$(aws elbv2 describe-load-balancers \
-            --names demo-alb \
-            --query 'LoadBalancers[0].DNSName' \
-            --output text)
-          
-          # Perform health check
-          STATUS="unhealthy"
-          for i in {1..5}; do
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$ALB_DNS:5001/")
-            if [ "$HTTP_STATUS" -eq 200 ]; then
-              STATUS="healthy"
-              break
-            fi
-            sleep 10
-          done
-          
-          if [ "$STATUS" = "healthy" ]; then
-            echo "Green deployment is healthy"
-            echo "STATUS=success" >> $GITHUB_OUTPUT
-          else
-            echo "Green deployment is unhealthy"
-            echo "STATUS=failure" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-      - name: Update blue environment
-        if: steps.health-check.outputs.STATUS == 'success'
+      - name: Deploy new task definition
+        id: deploy
         run: |
           # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
             --cli-input-json file://${{ env.TASK_DEFINITION_FILE }} \
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
+          echo "NEW_TASK_DEF_ARN=${NEW_TASK_DEF_ARN}" >> $GITHUB_ENV
           
-          # Update service with new task definition
+          # Update the service
           aws ecs update-service \
             --cluster ${{ env.CLUSTER_NAME }} \
             --service ${{ env.SERVICE_NAME }} \
             --task-definition $NEW_TASK_DEF_ARN \
             --force-new-deployment
-          
-          # Wait for stability
-          aws ecs wait services-stable \
-            --cluster ${{ env.CLUSTER_NAME }} \
-            --services ${{ env.SERVICE_NAME }}
 
-      - name: Switch traffic to blue
+          # Monitor deployment
+          echo "Monitoring deployment..."
+          START_TIME=$(date +%s)
+          TIMEOUT=$((${TIMEOUT_MINUTES} * 60))
+          
+          while true; do
+            DEPLOYMENT_STATUS=$(aws ecs describe-services \
+              --cluster ${{ env.CLUSTER_NAME }} \
+              --services ${{ env.SERVICE_NAME }} \
+              --query 'services[0].deployments[0].status' \
+              --output text)
+            
+            CURRENT_TIME=$(date +%s)
+            ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
+            
+            if [ "$DEPLOYMENT_STATUS" = "PRIMARY" ]; then
+              # Check if tasks are running
+              RUNNING_COUNT=$(aws ecs describe-services \
+                --cluster ${{ env.CLUSTER_NAME }} \
+                --services ${{ env.SERVICE_NAME }} \
+                --query 'services[0].runningCount' \
+                --output text)
+              
+              if [ "$RUNNING_COUNT" -ge 1 ]; then
+                echo "Deployment successful! Tasks are running."
+                exit 0
+              fi
+            fi
+            
+            if [ $ELAPSED_TIME -gt $TIMEOUT ]; then
+              echo "Deployment timed out after ${TIMEOUT_MINUTES} minutes"
+              exit 1
+            fi
+            
+            echo "Deployment status: $DEPLOYMENT_STATUS. Waiting..."
+            sleep 30
+          done
+
+      - name: Health check deployment
+        id: health-check
         if: success()
         run: |
-          # Get blue target group
-          BLUE_TARGET_GROUP=$(aws elbv2 describe-target-groups \
-            --query 'TargetGroups[?contains(TargetGroupName, `main-`)].TargetGroupArn' \
+          echo "Performing health check..."
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names demo-alb \
+            --query 'LoadBalancers[0].DNSName' \
             --output text)
           
-          # Get listener
-          LISTENER_ARN=$(aws elbv2 describe-listeners \
-            --load-balancer-arn $(aws elbv2 describe-load-balancers \
-              --names demo-alb \
-              --query 'LoadBalancers[0].LoadBalancerArn' \
-              --output text) \
-            --query 'Listeners[?Port==`80`].ListenerArn' \
-            --output text)
+          # Multiple retries for health check
+          MAX_RETRIES=5
+          RETRY_COUNT=0
           
-          # Switch traffic
-          aws elbv2 modify-listener \
-            --listener-arn $LISTENER_ARN \
-            --default-actions Type=forward,TargetGroupArn=$BLUE_TARGET_GROUP
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$ALB_DNS:80/")
+            
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "Health check passed!"
+              echo "STATUS=success" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "Health check attempt $RETRY_COUNT failed. Status: $HTTP_STATUS"
+            sleep 30
+          done
+          
+          echo "Health check failed after $MAX_RETRIES attempts"
+          echo "STATUS=failure" >> $GITHUB_OUTPUT
+          exit 1
 
       - name: Rollback on failure
         if: failure()
         run: |
           echo "Deployment failed, rolling back..."
           
-          # Get the previous task definition ARN from stored file
+          # Get the previous task definition
           PREVIOUS_TASK_DEF_ARN=$(jq -r '.taskDefinitionArn' ${{ steps.get-taskdef.outputs.TASK_DEF_FILE }})
           
-          # Update service to use previous task definition
+          # Rollback to previous task definition
           aws ecs update-service \
             --cluster ${{ env.CLUSTER_NAME }} \
             --service ${{ env.SERVICE_NAME }} \
             --task-definition $PREVIOUS_TASK_DEF_ARN \
             --force-new-deployment
           
-          # Wait for stability
-          aws ecs wait services-stable \
-            --cluster ${{ env.CLUSTER_NAME }} \
-            --services ${{ env.SERVICE_NAME }}
+          # Monitor rollback
+          START_TIME=$(date +%s)
           
-          echo "Rollback completed successfully"
+          while true; do
+            DEPLOYMENT_STATUS=$(aws ecs describe-services \
+              --cluster ${{ env.CLUSTER_NAME }} \
+              --services ${{ env.SERVICE_NAME }} \
+              --query 'services[0].deployments[0].status' \
+              --output text)
+            
+            CURRENT_TIME=$(date +%s)
+            ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
+            
+            if [ "$DEPLOYMENT_STATUS" = "PRIMARY" ] && \
+               [ "$(aws ecs describe-services \
+                    --cluster ${{ env.CLUSTER_NAME }} \
+                    --services ${{ env.SERVICE_NAME }} \
+                    --query 'services[0].runningCount' \
+                    --output text)" -ge 1 ]; then
+              echo "Rollback completed successfully"
+              exit 0
+            fi
+            
+            if [ $ELAPSED_TIME -gt 300 ]; then
+              echo "Rollback timed out after 5 minutes"
+              exit 1
+            fi
+            
+            echo "Rollback status: $DEPLOYMENT_STATUS. Waiting..."
+            sleep 30
+          done
