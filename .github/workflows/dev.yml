@@ -83,7 +83,7 @@ jobs:
         run: |
           ALB_DNS=$(aws elbv2 describe-load-balancers \
             --names demo-alb --query 'LoadBalancers[0].DNSName' --output text)
-          MAX_RETRIES=10
+          MAX_RETRIES=15  # Aumentando o número de tentativas
 
           for ((i=1; i<=MAX_RETRIES; i++)); do
             HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$ALB_DNS:${{ env.GREEN_LISTENER_PORT }}")
@@ -98,12 +98,31 @@ jobs:
             sleep 10
           done
 
-      - name: Switch production traffic to Green Target Group
-        id: switch-prod
+      - name: Deploy to Blue Environment
+        id: deploy-blue
         run: |
+          # Deploy the new version to the Blue environment (blue is the main environment, currently in production)
+          aws ecs update-service \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --service ${{ env.SERVICE_NAME }} \
+            --task-definition ${{ env.NEW_TASK_DEF }} \
+            --force-new-deployment
+
+      - name: Switch production traffic back to Blue Target Group
+        id: switch-prod-back-to-blue
+        run: |
+          # Switch the production listener to point to the Blue environment (back to the original target group)
           aws elbv2 modify-listener \
             --listener-arn ${{ env.PROD_LISTENER_ARN }} \
             --default-actions Type=forward,TargetGroupArn=${{ env.CURRENT_PROD_TG }}
+
+      - name: Remove traffic from Green Target Group
+        id: remove-traffic-green
+        run: |
+          # Disable the Green environment from receiving traffic
+          aws elbv2 modify-listener \
+            --listener-arn ${{ env.TEST_LISTENER_ARN }} \
+            --default-actions Type=fixed-response,ResponseCode=503
 
       - name: Rollback on failure
         if: failure()
