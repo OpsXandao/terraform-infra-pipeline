@@ -11,7 +11,8 @@ permissions:
 
 env:
   CLUSTER_NAME: dev-demo
-  SERVICE_NAME: demo-teste  # Alterado de 'app' para 'demo-teste' (nome da família da tarefa)
+  TASK_FAMILY_NAME: demo-teste
+  SERVICE_NAME: app
   TASK_DEFINITION_FILE: terraform/ecs/task_definition.tpl.json
   BLUE_LISTENER_PORT: 80
   GREEN_LISTENER_PORT: 5001
@@ -49,8 +50,7 @@ jobs:
       - name: Get current task definition
         id: task-def
         run: |
-          # Corrigido: Usar a família de tarefas correta 'demo-teste' no lugar de 'app'
-          TASK_DEF_JSON=$(aws ecs describe-task-definition --task-definition ${{ env.SERVICE_NAME }} --query 'taskDefinition' --output json)
+          TASK_DEF_JSON=$(aws ecs describe-task-definition --task-definition ${{ env.TASK_FAMILY_NAME }} --query 'taskDefinition' --output json)
           echo "$TASK_DEF_JSON" > current-task-def.json
           echo "CURRENT_IMAGE=$(jq -r '.containerDefinitions[0].image' current-task-def.json)" >> $GITHUB_ENV
 
