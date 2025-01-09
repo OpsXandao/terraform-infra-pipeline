@@ -220,7 +220,7 @@ resource "aws_security_group" "ecs_task" {
   }
 }
 
-# Alterações nos serviços ECS
+# Service ECS
 resource "aws_ecs_service" "app" {
   name            = "app"
   cluster         = aws_ecs_cluster.main.id
