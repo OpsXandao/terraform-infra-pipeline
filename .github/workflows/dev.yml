@@ -1,4 +1,3 @@
-
 name: "DEV DEPLOY"
 
 on:
@@ -22,11 +21,23 @@ jobs:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
 
-      - name: Deploy to ECS
+      - name: Deploy to Target Green
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: terraform/ecs/task_definition.tpl.json
           service: app
           cluster: dev-demo
           wait-for-service-stability: true
-          
+        env:
+          TARGET_GROUP_ARN: "arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250109150122242200000009/036f462562238e58"
+
+      - name: Deploy to Target Blue
+        if: steps.deploy_green.outcome == 'success'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: terraform/ecs/task_definition.tpl.json
+          service: app
+          cluster: dev-demo
+          wait-for-service-stability: true
+        env:
+          TARGET_GROUP_ARN: "arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250109150122239400000008/8a1eea94fa0721de"

@@ -13,3 +13,11 @@ output "ecs_task_role_arn" {
 output "alb_dns_name" {
   value = aws_lb.main.dns_name
 }
+
+output "green_target_arn" {
+  value = aws_lb_target_group.green.arn
+}
+
+output "blue_target_arn" {
+  value = aws_lb_target_group.blue.arn
+}
