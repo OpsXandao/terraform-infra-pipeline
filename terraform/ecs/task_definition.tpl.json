@@ -32,11 +32,12 @@
         }
     ],
     "family": "demo-teste",
-    "taskRoleArn": "arn:aws:iam::058264525554:role/demo-ecs-task-role20250107184643311900000003",
-    "executionRoleArn": "arn:aws:iam::058264525554:role/demo-ecs-exec-role20250107184643310200000001",
+    "taskRoleArn": "arn:aws:iam::058264525554:role/demo-ecs-task-role20250109141239163200000002",
+    "executionRoleArn": "arn:aws:iam::058264525554:role/demo-ecs-exec-role20250109141239163300000003",
     "networkMode": "bridge",
     "cpu": "256",
     "memory": "256",
     "volumes": [],
-    "placementConstraints": []
+    "placementConstraints": [],
+    "tags": []
 }
