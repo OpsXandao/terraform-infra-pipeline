@@ -17,7 +17,7 @@ data "aws_iam_policy_document" "ecs_node_doc" {
 }
 
 resource "aws_iam_role" "ecs_node_role" {
-  name_prefix        = "demo-ecs-node-role"  # Prefixo alterado para "demo-ecs-node-role"
+  name        = "demo-ecs-node-role"  # Prefixo alterado para "demo-ecs-node-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_node_doc.json
 }
 
@@ -27,13 +27,13 @@ resource "aws_iam_role_policy_attachment" "ecs_node_role_policy" {
 }
 
 resource "aws_iam_instance_profile" "ecs_node" {
-  name_prefix = "demo-ecs-node-profile"  # Prefixo alterado para "demo-ecs-node-profile"
+  name = "demo-ecs-node-profile"  # Prefixo alterado para "demo-ecs-node-profile"
   path        = "/ecs/instance/"
   role        = aws_iam_role.ecs_node_role.name
 }
 
 resource "aws_security_group" "ecs_node_sg" {
-  name_prefix = "demo-ecs-node-sg-"  # Prefixo alterado para "demo-ecs-node-sg-"
+  name = "demo-ecs-node-sg-"  # Prefixo alterado para "demo-ecs-node-sg-"
   vpc_id      = var.vpc_id
 
   ingress {
@@ -57,7 +57,7 @@ data "aws_ssm_parameter" "ecs_node_ami" {
 }
 
 resource "aws_launch_template" "ecs_ec2" {
-  name_prefix            = "demo-ecs-ec2-"  # Prefixo alterado para "demo-ecs-ec2-"
+  name            = "demo-ecs-ec2-"  # Prefixo alterado para "demo-ecs-ec2-"
   image_id               = data.aws_ssm_parameter.ecs_node_ami.value
   instance_type          = "t2.micro"
   vpc_security_group_ids = [aws_security_group.ecs_node_sg.id]
@@ -74,7 +74,7 @@ resource "aws_launch_template" "ecs_ec2" {
 
 # --- ECS ASG ---
 resource "aws_autoscaling_group" "ecs" {
-  name_prefix         = "demo-ecs-asg-"
+  name         = "demo-ecs-asg-"
   vpc_zone_identifier = var.public_subnet_ids
   min_size           = 1
   desired_capacity   = 2
@@ -149,12 +149,12 @@ data "aws_iam_policy_document" "ecs_task_doc" {
 }
 
 resource "aws_iam_role" "ecs_task_role" {
-  name_prefix        = "demo-ecs-task-role"  # Prefixo alterado para "demo-ecs-task-role"
+  name        = "demo-ecs-task-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_doc.json
 }
 
 resource "aws_iam_role" "ecs_exec_role" {
-  name_prefix        = "demo-ecs-exec-role"  # Prefixo alterado para "demo-ecs-exec-role"
+  name      = "demo-ecs-exec-role" 
   assume_role_policy = data.aws_iam_policy_document.ecs_task_doc.json
 }
 
@@ -208,7 +208,7 @@ resource "aws_ecs_task_definition" "app" {
 
 # --- ECS Service ---
 resource "aws_security_group" "ecs_task" {
-  name_prefix = "ecs-task-sg-"  # Prefixo alterado para "ecs-task-sg-"
+  name = "ecs-task-sg" 
   description = "Allow all traffic within the VPC"
   vpc_id      = var.vpc_id
 
@@ -265,7 +265,7 @@ resource "aws_ecs_service" "app" {
 
 # --- ALB ---
 resource "aws_security_group" "http" {
-  name_prefix = "http-sg-"
+  name = "http-sg"
   description = "Allow all HTTP/HTTPS traffic from public"
   vpc_id      = var.vpc_id
 
@@ -295,7 +295,7 @@ resource "aws_lb" "main" {
 }
 
 resource "aws_lb_target_group" "blue" {
-  name_prefix = "main-"
+  name = "main"
   vpc_id      = var.vpc_id
   protocol    = "HTTP"
   port        = 5000
@@ -314,7 +314,7 @@ resource "aws_lb_target_group" "blue" {
 }
 
 resource "aws_lb_target_group" "green" {
-  name_prefix = "green-"
+  name = "green"
   vpc_id      = var.vpc_id
   protocol    = "HTTP"
   port        = 5000
