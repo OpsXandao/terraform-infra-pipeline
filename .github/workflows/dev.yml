@@ -1,3 +1,4 @@
+
 name: "DEV DEPLOY"
 
 on:
@@ -26,5 +27,6 @@ jobs:
         with:
           task-definition: terraform/ecs/task_definition.tpl.json
           service: app
-          cluster: demo-ecs-cluster
+          cluster: dev-demo
           wait-for-service-stability: true
+          

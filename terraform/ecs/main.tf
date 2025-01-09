@@ -1,6 +1,6 @@
 # --- ECS Cluster ---
 resource "aws_ecs_cluster" "main" {
-  name = var.cluster_name
+  name = "demo-ecs-cluster"  # Alterado o nome do cluster para "demo-ecs-cluster"
 }
 
 # --- ECS Node Role ---
@@ -17,7 +17,7 @@ data "aws_iam_policy_document" "ecs_node_doc" {
 }
 
 resource "aws_iam_role" "ecs_node_role" {
-  name_prefix        = "demo-ecs-node-role" # Prefixo alterado para "demo-ecs-node-role"
+  name_prefix        = "demo-ecs-node-role"  # Prefixo alterado para "demo-ecs-node-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_node_doc.json
 }
 
@@ -27,17 +27,17 @@ resource "aws_iam_role_policy_attachment" "ecs_node_role_policy" {
 }
 
 resource "aws_iam_instance_profile" "ecs_node" {
-  name_prefix = "demo-ecs-node-profile" # Prefixo alterado para "demo-ecs-node-profile"
+  name_prefix = "demo-ecs-node-profile"  # Prefixo alterado para "demo-ecs-node-profile"
   path        = "/ecs/instance/"
   role        = aws_iam_role.ecs_node_role.name
 }
 
 resource "aws_security_group" "ecs_node_sg" {
-  name_prefix = "demo-ecs-node-sg-" # Prefixo alterado para "demo-ecs-node-sg-"
+  name_prefix = "demo-ecs-node-sg-"  # Prefixo alterado para "demo-ecs-node-sg-"
   vpc_id      = var.vpc_id
 
   ingress {
-    from_port       = 0
+    from_port       = 32768
     to_port         = 65535
     protocol        = "tcp"
     security_groups = [aws_security_group.http.id]
@@ -57,7 +57,7 @@ data "aws_ssm_parameter" "ecs_node_ami" {
 }
 
 resource "aws_launch_template" "ecs_ec2" {
-  name_prefix            = "demo-ecs-ec2-" # Prefixo alterado para "demo-ecs-ec2-"
+  name_prefix            = "demo-ecs-ec2-"  # Prefixo alterado para "demo-ecs-ec2-"
   image_id               = data.aws_ssm_parameter.ecs_node_ami.value
   instance_type          = "t2.micro"
   vpc_security_group_ids = [aws_security_group.ecs_node_sg.id]
@@ -74,10 +74,7 @@ resource "aws_launch_template" "ecs_ec2" {
 
 # --- ECS ASG ---
 resource "aws_autoscaling_group" "ecs" {
-  target_group_arns = [
-    aws_lb_target_group.blue.arn,
-    aws_lb_target_group.green.arn
-  ]
+    target_group_arns    = [aws_lb_target_group.blue.arn]  # Add this line back
   name_prefix         = "demo-ecs-asg-"
   vpc_zone_identifier = var.public_subnet_ids
   min_size            = 1
@@ -87,6 +84,11 @@ resource "aws_autoscaling_group" "ecs" {
   health_check_grace_period = 0
   health_check_type         = "EC2"
   protect_from_scale_in     = true
+
+  target_group_arns = [
+    aws_lb_target_group.blue.arn,
+    aws_lb_target_group.green.arn
+  ]
 
   launch_template {
     id      = aws_launch_template.ecs_ec2.id
@@ -135,6 +137,7 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 }
 
 # --- ECS Task Role ---
+# --- ECS Task Role ---
 data "aws_iam_policy_document" "ecs_task_doc" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -148,12 +151,33 @@ data "aws_iam_policy_document" "ecs_task_doc" {
 }
 
 resource "aws_iam_role" "ecs_task_role" {
-  name_prefix        = "demo-ecs-task-role" # Prefixo alterado para "demo-ecs-task-role"
+  name_prefix        = "demo-ecs-task-role"  # Prefixo alterado para "demo-ecs-task-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_doc.json
 }
 
+# Separate policy for the task role
+resource "aws_iam_role_policy" "ecs_task_policy" {
+  name = "ecs-task-base-policy"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Make sure the execution role has proper permissions
 resource "aws_iam_role" "ecs_exec_role" {
-  name_prefix        = "demo-ecs-exec-role" # Prefixo alterado para "demo-ecs-exec-role"
+  name_prefix        = "demo-ecs-exec-role"  # Prefixo alterado para "demo-ecs-exec-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_doc.json
 }
 
@@ -162,13 +186,14 @@ resource "aws_iam_role_policy_attachment" "ecs_exec_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# --- Cloud Watch Logs ---
+# --- CloudWatch Log Group ---
 resource "aws_cloudwatch_log_group" "ecs" {
   name              = "/ecs/demo"
   retention_in_days = 30
 
-  lifecycle {
-    ignore_changes = [name]
+  tags = {
+    Environment = "dev"
+    Application = "demo"
   }
 }
 
@@ -181,13 +206,11 @@ resource "aws_ecs_task_definition" "app" {
   memory             = 256
 
   container_definitions = jsonencode([{
-    name      = "app",
-    image     = var.container_image,
-    essential = true,
-    portMappings = [{
-      containerPort = 5000,
-      hostPort      = 5000
-    }]
+    name         = "app",
+    image        = var.container_image,
+    essential    = true,
+    portMappings = [{ containerPort = 5000 }],
+
     environment = [
       { name = "EXAMPLE", value = "example" }
     ]
@@ -205,7 +228,7 @@ resource "aws_ecs_task_definition" "app" {
 
 # --- ECS Service ---
 resource "aws_security_group" "ecs_task" {
-  name_prefix = "ecs-task-sg-" # Prefixo alterado para "ecs-task-sg-"
+  name_prefix = "ecs-task-sg-"  # Prefixo alterado para "ecs-task-sg-"
   description = "Allow all traffic within the VPC"
   vpc_id      = var.vpc_id
 
@@ -224,7 +247,7 @@ resource "aws_security_group" "ecs_task" {
   }
 }
 
-# Alterações nos serviços ECS
+# SERVICE ECS
 resource "aws_ecs_service" "app" {
   name            = "app"
   cluster         = aws_ecs_cluster.main.id
@@ -244,6 +267,12 @@ resource "aws_ecs_service" "app" {
     container_port   = 5000
   }
 
+  load_balancer {
+    target_group_arn = aws_lb_target_group.green.arn
+    container_name   = "app"
+    container_port   = 5000
+  }
+
   lifecycle {
     ignore_changes = [
       task_definition,
@@ -256,7 +285,7 @@ resource "aws_ecs_service" "app" {
 
 # --- ALB ---
 resource "aws_security_group" "http" {
-  name_prefix = "http-sg-"
+  name = "http-sg"
   description = "Allow all HTTP/HTTPS traffic from public"
   vpc_id      = var.vpc_id
 
@@ -286,11 +315,11 @@ resource "aws_lb" "main" {
 }
 
 resource "aws_lb_target_group" "blue" {
-  name_prefix = "main-"
+  name = "main"
   vpc_id      = var.vpc_id
   protocol    = "HTTP"
   port        = 5000
-  target_type = "instance"
+  target_type = "instance"  # This MUST be "instance" for bridge network mode, not "ip"
 
   health_check {
     enabled             = true
@@ -305,7 +334,7 @@ resource "aws_lb_target_group" "blue" {
 }
 
 resource "aws_lb_target_group" "green" {
-  name_prefix = "green-"
+  name = "green"
   vpc_id      = var.vpc_id
   protocol    = "HTTP"
   port        = 5000
@@ -348,10 +377,11 @@ resource "aws_lb_listener" "test" {
     target_group_arn = aws_lb_target_group.green.arn
   }
 }
+# --- GitHub Actions IAM Policy ---
 resource "aws_iam_policy" "github_actions_ecs_policy" {
   name        = "github-actions-ecs-policy"
   description = "GitHub Actions policy for ECS deployments"
-  policy = jsonencode({
+  policy      = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -361,7 +391,11 @@ resource "aws_iam_policy" "github_actions_ecs_policy" {
           "ecs:UpdateService",
           "ecs:RegisterTaskDefinition",
           "ecs:DescribeTaskDefinition",
-          "iam:PassRole"
+          "iam:PassRole",
+          "elasticloadbalancing:DescribeTargetGroups",
+          "elasticloadbalancing:DescribeLoadBalancers",
+          "elasticloadbalancing:ModifyListener",
+          "elasticloadbalancing:DescribeListeners"
         ]
         Resource = "*"
       }
@@ -369,7 +403,8 @@ resource "aws_iam_policy" "github_actions_ecs_policy" {
   })
 }
 
+# Attach Policy para o GitHub Actions Role
 resource "aws_iam_role_policy_attachment" "github_actions_ecs_policy_attachment" {
-  role       = "github-actions-OpsXandao-pipeline" # Nome da role usada no GitHub Actions
+  role       = "github-actions-OpsXandao-pipeline"  # Nome da role usada no GitHub Actions
   policy_arn = aws_iam_policy.github_actions_ecs_policy.arn
 }
