@@ -17,7 +17,7 @@ data "aws_iam_policy_document" "ecs_node_doc" {
 }
 
 resource "aws_iam_role" "ecs_node_role" {
-  name        = "demo-ecs-node-role"  # Prefixo alterado para "demo-ecs-node-role"
+  name        = "demo-ecs-node-role" 
   assume_role_policy = data.aws_iam_policy_document.ecs_node_doc.json
 }
 
@@ -27,13 +27,13 @@ resource "aws_iam_role_policy_attachment" "ecs_node_role_policy" {
 }
 
 resource "aws_iam_instance_profile" "ecs_node" {
-  name = "demo-ecs-node-profile"  # Prefixo alterado para "demo-ecs-node-profile"
+  name = "demo-ecs-node-profile"
   path        = "/ecs/instance/"
   role        = aws_iam_role.ecs_node_role.name
 }
 
 resource "aws_security_group" "ecs_node_sg" {
-  name = "demo-ecs-node-sg-"  # Prefixo alterado para "demo-ecs-node-sg-"
+  name = "demo-ecs-node-sg-"
   vpc_id      = var.vpc_id
 
   ingress {
@@ -57,7 +57,7 @@ data "aws_ssm_parameter" "ecs_node_ami" {
 }
 
 resource "aws_launch_template" "ecs_ec2" {
-  name            = "demo-ecs-ec2-"  # Prefixo alterado para "demo-ecs-ec2-"
+  name            = "demo-ecs-ec2-"
   image_id               = data.aws_ssm_parameter.ecs_node_ami.value
   instance_type          = "t2.micro"
   vpc_security_group_ids = [aws_security_group.ecs_node_sg.id]
@@ -109,7 +109,7 @@ resource "aws_autoscaling_group" "ecs" {
 
 # --- ECS Capacity Provider ---
 resource "aws_ecs_capacity_provider" "main" {
-  name = "demo-ecs-ecc"  # Alterado o nome do capacity provider para "demo-ecs-ecc"
+  name = "demo-ecs-ecc"
 
   auto_scaling_group_provider {
     auto_scaling_group_arn         = aws_autoscaling_group.ecs.arn
@@ -136,6 +136,7 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 }
 
 # --- ECS Task Role ---
+# --- ECS Task Role ---
 data "aws_iam_policy_document" "ecs_task_doc" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -149,12 +150,33 @@ data "aws_iam_policy_document" "ecs_task_doc" {
 }
 
 resource "aws_iam_role" "ecs_task_role" {
-  name        = "demo-ecs-task-role"
+  name               = "demo-ecs-task-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_doc.json
 }
 
+# Separate policy for the task role
+resource "aws_iam_role_policy" "ecs_task_policy" {
+  name = "ecs-task-base-policy"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Make sure the execution role has proper permissions
 resource "aws_iam_role" "ecs_exec_role" {
-  name      = "demo-ecs-exec-role" 
+  name               = "demo-ecs-exec-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_doc.json
 }
 
@@ -163,13 +185,14 @@ resource "aws_iam_role_policy_attachment" "ecs_exec_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# --- Cloud Watch Logs ---
+# --- CloudWatch Log Group ---
 resource "aws_cloudwatch_log_group" "ecs" {
   name              = "/ecs/demo"
   retention_in_days = 30
 
-  lifecycle {
-    ignore_changes = [name]
+  tags = {
+    Environment = "dev"
+    Application = "demo"
   }
 }
 
@@ -299,7 +322,7 @@ resource "aws_lb_target_group" "blue" {
   vpc_id      = var.vpc_id
   protocol    = "HTTP"
   port        = 5000
-  target_type = "instance"  # This MUST be "instance" for bridge network mode, not "ip"
+  target_type = "instance" 
 
   health_check {
     enabled             = true
