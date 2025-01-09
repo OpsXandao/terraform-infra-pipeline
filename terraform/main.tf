@@ -34,16 +34,50 @@ module "vpc" {
   nat_gateway     = var.nat_gateway
 }
 
-  module "ecs" {
-    source = "./ecs"
-    vpc_id = module.vpc.vpc_id
-    public_subnet_ids = module.vpc.public_subnet_ids
-    cluster_name = "dev-demo"
-    container_image = "03021914/blue-green:v1"
-    cidr_block = module.vpc.cidr_block
-    # key_name = aws_key_pair.this.id
-  }
+module "ecs-dev" {
+  source                        = "./ambiente/dev/ecs"
+  vpc_id                        = module.vpc.vpc_id
+  public_subnet_ids             = module.vpc.public_subnet_ids
+  cluster_name                  = "demo"
+  container_image               = "03021914/blue-green:v1"
+  cidr_block                    = module.vpc.cidr_block
+  http_security_group           = module.alb.http_security_group_id
+  ecs_task_role_arn             = module.iam.ecs_task_role_arn
+  ecs_exec_role_arn             = module.iam.ecs_exec_role_arn
+  ecs_node_role_arn             = module.iam.ecs_node_role_arn
+  ecs_node_profile_arn          = module.iam.ecs_node_profile_arn
+  aws_lb_target_group_blue_arn  = module.alb.aws_lb_target_group_blue_arn
+  aws_lb_target_group_green_arn = module.alb.aws_lb_target_group_green_arn
 
+  # key_name = aws_key_pair.this.idS
+}
+
+module "ecs-prd" {
+  source                        = "./ambiente/prd/ecs"
+  vpc_id                        = module.vpc.vpc_id
+  public_subnet_ids             = module.vpc.public_subnet_ids
+  cluster_name                  = "demo"
+  container_image               = "03021914/blue-green:v1"
+  cidr_block                    = module.vpc.cidr_block
+  http_security_group           = module.alb.http_security_group_id
+  ecs_task_role_arn             = module.iam.ecs_task_role_arn
+  ecs_exec_role_arn             = module.iam.ecs_exec_role_arn
+  ecs_node_role_arn             = module.iam.ecs_node_role_arn
+  ecs_node_profile_arn          = module.iam.ecs_node_profile_arn
+  aws_lb_target_group_blue_arn  = module.alb.aws_lb_target_group_blue_arn
+  aws_lb_target_group_green_arn = module.alb.aws_lb_target_group_green_arn
+  ecs_task_sg_id                = module.ecs-dev.ecs_task_sg_id
+  ecs_node_sg_id                = module.ecs-dev.ecs_node_sg_id
+}
+module "alb" {
+  source            = "./alb"
+  vpc_id            = module.vpc.vpc_id
+  public_subnet_ids = module.vpc.public_subnet_ids
+}
+
+module "iam" {
+  source = "./iam"
+}
 
 # # module "ec2_test" {
 #   source             = "./ec2"

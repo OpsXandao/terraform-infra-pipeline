@@ -1,9 +1,9 @@
-name: "DEV DEPLOY"
+name: "Blue/Green Deployment"
 
 on:
   push:
     branches:
-      - dev
+      - main
 
 permissions:
   id-token: write
@@ -21,23 +21,48 @@ jobs:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
 
-      - name: Deploy to Target Green
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: terraform/ecs/task_definition.tpl.json
-          service: app
-          cluster: dev-demo
-          wait-for-service-stability: true
-        env:
-          TARGET_GROUP_ARN: "arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250109150122242200000009/036f462562238e58"
+      - name: Switch traffic to green environment
+        run: |
+          aws elbv2 modify-listener \
+            --listener-arn $(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`80`].ListenerArn' --output text) \
+            --default-actions Type=forward,TargetGroupArn=$(aws elbv2 describe-target-groups --name-prefix green- --query 'TargetGroups[0].TargetGroupArn' --output text)
 
-      - name: Deploy to Target Blue
-        if: steps.deploy_green.outcome == 'success'
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: terraform/ecs/task_definition.tpl.json
-          service: app
-          cluster: dev-demo
-          wait-for-service-stability: true
-        env:
-          TARGET_GROUP_ARN: "arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250109150122239400000008/8a1eea94fa0721de"
+      - name: Update ECS service with new image
+        run: |
+          # Get the current task definition
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition show-colors --query 'taskDefinition' --output json)
+          
+          # Create new task definition with updated image
+          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "03021914/blue-green:v2"')
+          
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --family show-colors \
+            --task-role-arn $(echo $TASK_DEFINITION | jq -r '.taskRoleArn') \
+            --execution-role-arn $(echo $TASK_DEFINITION | jq -r '.executionRoleArn') \
+            --network-mode bridge \
+            --container-definitions "$(echo $NEW_TASK_DEFINITION | jq '.containerDefinitions')" \
+            --cpu "$(echo $TASK_DEFINITION | jq -r '.cpu')" \
+            --memory "$(echo $TASK_DEFINITION | jq -r '.memory')" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          # Update the service with new task definition
+          aws ecs update-service \
+            --cluster prd-demo \
+            --service color-bg-prd \
+            --task-definition $NEW_TASK_DEF_ARN \
+            --force-new-deployment
+
+      - name: Wait for service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster prd-demo \
+            --services color-bg-prd
+
+      - name: Switch traffic back to blue environment
+        if: success()
+        run: |
+          aws elbv2 modify-listener \
+            --listener-arn $(aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers --names demo-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text) --query 'Listeners[?Port==`80`].ListenerArn' --output text) \
+            --default-actions Type=forward,TargetGroupArn=$(aws elbv2 describe-target-groups --name-prefix main- --query 'TargetGroups[0].TargetGroupArn' --output text)
