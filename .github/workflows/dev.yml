@@ -3,7 +3,7 @@ name: "Blue/Green Deployment"
 on:
   push:
     branches:
-      - main
+      - dev
 
 permissions:
   id-token: write
