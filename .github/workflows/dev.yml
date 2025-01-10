@@ -21,7 +21,7 @@ jobs:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
 
-      # Primeiro direcionamos o tráfego de produção para green enquanto atualizamos blue
+      # Primeiro direcionamos o tráfego de produção para green enquanto atualizamos blue de prd
       - name: Switch production listener (port 80) to green target
         run: |
           aws elbv2 modify-listener \
