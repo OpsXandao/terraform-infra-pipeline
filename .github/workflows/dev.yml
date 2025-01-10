@@ -21,12 +21,12 @@ jobs:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
 
-      # Primeiro direcionamos o tráfego de produção para green enquanto atualizamos blue de prd
+      # Primeiro direcionamos o tráfego de produção para green enquanto atualizamos blue
       - name: Switch production listener (port 80) to green target
         run: |
           aws elbv2 modify-listener \
             --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/2fce0c3d8076a8e6/46bc07240af2f088 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011011160310350000000a/8ec53653f5d875be
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250110120646615800000008/68e0530aca977289
 
       # Atualizamos o ambiente blue com a nova imagem
       - name: Update blue environment with new image
@@ -69,9 +69,9 @@ jobs:
           # Porta 80 (produção) aponta para blue (nova imagem)
           aws elbv2 modify-listener \
             --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/2fce0c3d8076a8e6/46bc07240af2f088 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250110111603103300000008/a4486f2e8b9cfe09
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250110120646615800000009/b12c7f572d96b796
 
           # Porta 5001 (teste) aponta para green (imagem antiga)
           aws elbv2 modify-listener \
             --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/2fce0c3d8076a8e6/fffb469d90025039 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011011160310350000000a/8ec53653f5d875be
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250110120646615800000008/68e0530aca977289
