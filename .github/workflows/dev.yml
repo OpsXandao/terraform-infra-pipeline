@@ -21,27 +21,39 @@ jobs:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
 
-      - name: Get current task definition
-        id: taskdef
+      - name: Switch production listener (port 80) to green target
         run: |
-          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition show-colors --query 'taskDefinition' --output json)
-          echo "::set-output name=taskdef::$TASK_DEFINITION"
+          aws elbv2 modify-listener \
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1f083f8eca053c81/8f9fbabc905390d7 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011011160310350000000a/8ec53653f5d875be
 
-      - name: Update ECS service with new image and green target group
+      - name: Switch test listener (port 5001) to blue target
         run: |
+          aws elbv2 modify-listener \
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1f083f8eca053c81/92f531ed67125bc4 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250110111603103300000008/a4486f2e8b9cfe09
+            
+      - name: Update blue environment with new image
+        run: |
+          # Get the current task definition
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition show-colors --query 'taskDefinition' --output json)
+          
+          # Create new task definition with updated image
+          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "03021914/blue-green:v2"')
+          
           # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
             --family show-colors \
-            --task-role-arn $(echo '${{ steps.taskdef.outputs.taskdef }}' | jq -r '.taskRoleArn') \
-            --execution-role-arn $(echo '${{ steps.taskdef.outputs.taskdef }}' | jq -r '.executionRoleArn') \
+            --task-role-arn $(echo $TASK_DEFINITION | jq -r '.taskRoleArn') \
+            --execution-role-arn $(echo $TASK_DEFINITION | jq -r '.executionRoleArn') \
             --network-mode bridge \
-            --container-definitions '[{"name":"app","image":"03021914/blue-green:v2","essential":true,"portMappings":[{"containerPort":5000,"hostPort":0,"protocol":"tcp"}]}]' \
-            --cpu "256" \
-            --memory "256" \
+            --container-definitions "$(echo $NEW_TASK_DEFINITION | jq '.containerDefinitions')" \
+            --cpu "$(echo $TASK_DEFINITION | jq -r '.cpu')" \
+            --memory "$(echo $TASK_DEFINITION | jq -r '.memory')" \
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
-
-          # Update the service
+          
+          # Update the blue service with new task definition
           aws ecs update-service \
             --cluster prd-demo \
             --service color-bg-prd \
@@ -54,25 +66,15 @@ jobs:
             --cluster prd-demo \
             --services color-bg-prd
 
-      - name: Switch traffic to green target group
+      - name: Switch listeners back to original configuration (on success)
         if: success()
         run: |
+          # Switch production listener (port 80) back to blue target
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/0565fa1042ffff1f/80 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025010920200791910000000a/4b31ab2c9059ad36
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1f083f8eca053c81/8f9fbabc905390d7 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250110111603103300000008/a4486f2e8b9cfe09
 
-      - name: Health check green environment
-        run: |
-          sleep 30  # Wait for the application to be ready
-          response=$(curl -s -o /dev/null -w "%{http_code}" http://demo-alb-716411278.us-east-1.elb.amazonaws.com:5001)
-          if [ "$response" != "200" ]; then
-            echo "Health check failed!"
-            exit 1
-          fi
-
-      - name: Switch traffic back to blue environment
-        if: always()  # Execute even if previous step fails
-        run: |
+          # Switch test listener (port 5001) back to green target
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/0565fa1042ffff1f/80 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-2025010920200900350000000d/0c80a6712889b599
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1f083f8eca053c81/92f531ed67125bc4 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011011160310350000000a/8ec53653f5d875be
