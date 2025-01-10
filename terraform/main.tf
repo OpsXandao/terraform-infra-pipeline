@@ -11,7 +11,7 @@ terraform {
 provider "aws" {
   region = var.aws_region
 }
-
+  
 
 # resource "aws_key_pair" "this" {
 #   key_name   = "terraformed-key"
