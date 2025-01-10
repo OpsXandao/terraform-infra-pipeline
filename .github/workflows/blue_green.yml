@@ -2,7 +2,7 @@ name: "Blue/Green Deployment"
 on:
   push:
     branches:
-      - main
+      - example
 
 permissions:
   id-token: write
@@ -17,35 +17,35 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
-          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::<AWS_ACCOUNT_ID>:role/<ROLE_NAME>
+          aws-region: <AWS_REGION>
 
       # 1° Direcionamos o tráfego de produção para green
       - name: Switch production traffic to green target
         run: |
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/a36492c61f3cff12 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011012315275840000000a/9e9fde989dc66620
+            --listener-arn arn:aws:elasticloadbalancing:<AWS_REGION>:<AWS_ACCOUNT_ID>:listener/app/<ALB_NAME>/<LISTENER_ID_PROD> \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:<AWS_REGION>:<AWS_ACCOUNT_ID>:targetgroup/<TARGET_GROUP_GREEN>/<TARGET_GROUP_ID_GREEN>
 
       # 2° Direcionamos o tráfego de teste para blue
       - name: Switch test traffic to blue target
         run: |
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/19b1a6730bf39269 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250110123152758200000009/e2dcae064b806df1
+            --listener-arn arn:aws:elasticloadbalancing:<AWS_REGION>:<AWS_ACCOUNT_ID>:listener/app/<ALB_NAME>/<LISTENER_ID_TEST> \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:<AWS_REGION>:<AWS_ACCOUNT_ID>:targetgroup/<TARGET_GROUP_BLUE>/<TARGET_GROUP_ID_BLUE>
 
       # Atualizamos o ambiente blue com a nova imagem
       - name: Update blue environment with new image
         run: |
           # Get the current task definition
-          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition show-colors --query 'taskDefinition' --output json)
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition <TASK_FAMILY> --query 'taskDefinition' --output json)
           
           # Create new task definition with updated image
-          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "03021914/blue-green:v2"')
+          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "<NEW_IMAGE>"')
           
           # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
-            --family show-colors \
+            --family <TASK_FAMILY> \
             --task-role-arn $(echo $TASK_DEFINITION | jq -r '.taskRoleArn') \
             --execution-role-arn $(echo $TASK_DEFINITION | jq -r '.executionRoleArn') \
             --network-mode bridge \
@@ -57,16 +57,16 @@ jobs:
           
           # Update the blue service with new task definition
           aws ecs update-service \
-            --cluster prd-demo \
-            --service color-bg-prd \
+            --cluster <CLUSTER_NAME> \
+            --service <SERVICE_NAME> \
             --task-definition $NEW_TASK_DEF_ARN \
             --force-new-deployment
 
       - name: Wait for service stability
         run: |
           aws ecs wait services-stable \
-            --cluster prd-demo \
-            --services color-bg-prd
+            --cluster <CLUSTER_NAME> \
+            --services <SERVICE_NAME>
 
       # Após o deploy bem-sucedido, configuramos os listeners finais
       - name: Configure final traffic routing (on success)
@@ -74,10 +74,10 @@ jobs:
         run: |
           # Porta 80 (produção) aponta para blue (nova imagem)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/a36492c61f3cff12 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250110123152758200000009/e2dcae064b806df1
+            --listener-arn arn:aws:elasticloadbalancing:<AWS_REGION>:<AWS_ACCOUNT_ID>:listener/app/<ALB_NAME>/<LISTENER_ID_PROD> \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:<AWS_REGION>:<AWS_ACCOUNT_ID>:targetgroup/<TARGET_GROUP_BLUE>/<TARGET_GROUP_ID_BLUE>
 
           # Porta 5001 (teste) aponta para green (imagem antiga)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/19b1a6730bf39269 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011012315275840000000a/9e9fde989dc66620
+            --listener-arn arn:aws:elasticloadbalancing:<AWS_REGION>:<AWS_ACCOUNT_ID>:listener/app/<ALB_NAME>/<LISTENER_ID_TEST> \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:<AWS_REGION>:<AWS_ACCOUNT_ID>:targetgroup/<TARGET_GROUP_GREEN>/<TARGET_GROUP_ID_GREEN>

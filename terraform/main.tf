@@ -9,29 +9,18 @@ terraform {
 }
 
 provider "aws" {
-  region = var.aws_region
+  region = "us-east-1"
 }
-  
-
-# resource "aws_key_pair" "this" {
-#   key_name   = "terraformed-key"
-#   public_key = file("/home/elvenworks24/.ssh/id_rsa.pub")
-
-#   tags = {
-#     Name = "terraformed-key"
-#   }
-# }
-
 
 # VPC Module
 module "vpc" {
   source          = "git::https://github.com/OpsXandao/modules-terraform.git//terraform/vpc?ref=main"
   name            = "vpc-standard"
   cidr_block      = "10.0.0.0/16"
-  public_subnets  = var.public_subnets
-  private_subnets = var.private_subnets
-  azs             = var.azs
-  nat_gateway     = var.nat_gateway
+  public_subnets  = ["10.0.1.0/24", "10.0.2.0/24"]
+  private_subnets = ["10.0.3.0/24", "10.0.4.0/24"]
+  azs             = ["us-east-1a", "us-east-1b"]
+  nat_gateway     = true
 }
 
 module "ecs-dev" {
@@ -48,8 +37,6 @@ module "ecs-dev" {
   ecs_node_profile_arn          = module.iam.ecs_node_profile_arn
   aws_lb_target_group_blue_arn  = module.alb.aws_lb_target_group_blue_arn
   aws_lb_target_group_green_arn = module.alb.aws_lb_target_group_green_arn
-
-  # key_name = aws_key_pair.this.idS
 }
 
 module "ecs-prd" {
@@ -78,11 +65,3 @@ module "alb" {
 module "iam" {
   source = "./iam"
 }
-
-# # module "ec2_test" {
-#   source             = "./ec2"
-#   vpc_id             = module.vpc.vpc_id
-#   public_subnet_ids  = module.vpc.public_subnet_ids
-#   ami_id             = "ami-0e2c8caa4b6378d8c"
-#   instance_type      = "t3.medium"
-# }
