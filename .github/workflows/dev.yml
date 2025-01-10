@@ -1,5 +1,4 @@
 name: "Blue/Green Deployment"
-
 on:
   push:
     branches:
@@ -14,19 +13,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-
+      
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
 
-      # Primeiro direcionamos o tráfego de produção para green enquanto atualizamos blue
-      - name: Switch production listener (port 80) to green target
+      # 1° Direcionamos o tráfego de produção para green
+      - name: Switch production traffic to green target
         run: |
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/2fce0c3d8076a8e6/46bc07240af2f088 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250110120646615800000008/68e0530aca977289
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/a36492c61f3cff12 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011012315275840000000a/9e9fde989dc66620
+
+      # 2° Direcionamos o tráfego de teste para blue
+      - name: Switch test traffic to blue target
+        run: |
+          aws elbv2 modify-listener \
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/19b1a6730bf39269 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250110123152758200000009/e2dcae064b806df1
 
       # Atualizamos o ambiente blue com a nova imagem
       - name: Update blue environment with new image
@@ -62,16 +68,16 @@ jobs:
             --cluster prd-demo \
             --services color-bg-prd
 
-      # Após o deploy bem-sucedido, configuramos os listeners corretamente
+      # Após o deploy bem-sucedido, configuramos os listeners finais
       - name: Configure final traffic routing (on success)
         if: success()
         run: |
           # Porta 80 (produção) aponta para blue (nova imagem)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/2fce0c3d8076a8e6/46bc07240af2f088 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250110120646615800000009/b12c7f572d96b796
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/a36492c61f3cff12 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250110123152758200000009/e2dcae064b806df1
 
           # Porta 5001 (teste) aponta para green (imagem antiga)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/2fce0c3d8076a8e6/fffb469d90025039 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250110120646615800000008/68e0530aca977289
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/19b1a6730bf39269 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011012315275840000000a/9e9fde989dc66620
