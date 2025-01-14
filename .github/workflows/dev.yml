@@ -24,15 +24,15 @@ jobs:
       - name: Switch production traffic to green target
         run: |
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/a36492c61f3cff12 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011012315275840000000a/9e9fde989dc66620
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d5a052c71fd5d57/cec74cbc52e65e13 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011415090089330000000b/732441e9a0238b81
 
       # 2° Direcionamos o tráfego de teste para blue
       - name: Switch test traffic to blue target
         run: |
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/19b1a6730bf39269 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250110123152758200000009/e2dcae064b806df1
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d5a052c71fd5d57/156955bcc2316c8b \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250114150859875300000008/8abf5cd92b12bb38
 
       # Atualizamos o ambiente blue com a nova imagem
       - name: Update blue environment with new image
@@ -74,10 +74,10 @@ jobs:
         run: |
           # Porta 80 (produção) aponta para blue (nova imagem)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/a36492c61f3cff12 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250110123152758200000009/e2dcae064b806df1
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d5a052c71fd5d57/cec74cbc52e65e13 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250114150859875300000008/8abf5cd92b12bb38
 
           # Porta 5001 (teste) aponta para green (imagem antiga)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d538292d37e37a2/19b1a6730bf39269 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011012315275840000000a/9e9fde989dc66620
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d5a052c71fd5d57/156955bcc2316c8b \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011415090089330000000b/732441e9a0238b81
