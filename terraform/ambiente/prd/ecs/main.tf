@@ -31,7 +31,7 @@ resource "aws_launch_template" "ecs_ec2" {
 
 # --- ECS ASG (prd) ---
 resource "aws_autoscaling_group" "ecs" {
-  target_group_arns   = [var.aws_lb_target_group_green_arn]
+  target_group_arns   = [var.aws_lb_target_group_blue_arn]
   name                = "prd-ecs-asg"
   vpc_zone_identifier = var.public_subnet_ids
   min_size            = 1
