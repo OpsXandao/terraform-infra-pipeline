@@ -24,16 +24,15 @@ jobs:
       - name: Switch production traffic to green target
         run: |
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/55974490c260b975/0dfb7599e612aff4 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117161001320700000009/ca01235859545c59
-
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/d70f0a12988b441c/b705a56a0e2d53e0 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117165153082600000008/80f810a54863ee18
 
       # 2° Direcionamos o tráfego de teste para blue
       - name: Switch test traffic to blue target
         run: |
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/55974490c260b975/954173e00ffe0178 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117161001319700000008/e4cda01b4ab10257
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/d70f0a12988b441c/1c0b6c4f03df115c \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117165153083800000009/d67ac5614fd7565c
 
       # Atualizamos o ambiente blue com a nova imagem
       - name: Update blue environment with new image
@@ -68,24 +67,6 @@ jobs:
           aws ecs wait services-stable \
             --cluster prd-demo \
             --services color-bg-prd
-            
-      # Rollback if blue service is not stable
-      - name: Rollback blue environment if failure
-        if: failure()
-        run: |
-          echo "Rolling back blue environment..."
-          # Rollback to previous task definition for blue
-          PREVIOUS_TASK_DEF_ARN=$(aws ecs describe-services \
-            --cluster prd-demo \
-            --services color-bg-prd \
-            --query 'services[0].taskDefinition' \
-            --output text)
-          
-          aws ecs update-service \
-            --cluster prd-demo \
-            --service color-bg-prd \
-            --task-definition $PREVIOUS_TASK_DEF_ARN \
-            --force-new-deployment
 
       # Após o deploy bem-sucedido, configuramos os listeners finais
       - name: Configure final traffic routing (on success)
@@ -93,61 +74,10 @@ jobs:
         run: |
           # Porta 80 (produção) aponta para blue (nova imagem)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/55974490c260b975/0dfb7599e612aff4 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117161001319700000008/e4cda01b4ab10257
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/d70f0a12988b441c/b705a56a0e2d53e0 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117165153083800000009/d67ac5614fd7565c
 
           # Porta 5001 (teste) aponta para green (imagem antiga)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/55974490c260b975/954173e00ffe0178 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117161001320700000009/ca01235859545c59
-     
-            # Step para aguardar 1 minuto antes de deployar o green
-      - name: Wait 1 minute before deploying green
-        run: |
-          echo "Waiting for 1 minute before deploying green..."
-          sleep 5
-
-      # Atualizamos o ambiente green com a nova imagem 
-      - name: Update green environment with new image
-        run: |
-          # Get the current task definition
-          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition show-colors --query 'taskDefinition' --output json)
-          
-          # Create new task definition with updated image
-          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "03021914/blue-green:v2"')
-          
-          # Register new task definition
-          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
-            --family show-colors \
-            --task-role-arn $(echo $TASK_DEFINITION | jq -r '.taskRoleArn') \
-            --execution-role-arn $(echo $TASK_DEFINITION | jq -r '.executionRoleArn') \
-            --network-mode bridge \
-            --container-definitions "$(echo $NEW_TASK_DEFINITION | jq '.containerDefinitions')" \
-            --cpu "$(echo $TASK_DEFINITION | jq -r '.cpu')" \
-            --memory "$(echo $TASK_DEFINITION | jq -r '.memory')" \
-            --query 'taskDefinition.taskDefinitionArn' \
-            --output text)
-          
-          # Update the green service with new task definition
-          aws ecs update-service \
-            --cluster dev-demo \
-            --service color-bg \
-            --task-definition $NEW_TASK_DEF_ARN \
-            --force-new-deployment
-
-      - name: Rollback green environment if failure
-        if: failure()
-        run: |
-            echo "Rolling back green environment..."
-            # Rollback to previous task definition for green
-            PREVIOUS_TASK_DEF_ARN=$(aws ecs describe-services \
-              --cluster dev-demo \
-              --services color-bg \
-              --query 'services[0].taskDefinition' \
-              --output text)
-                  
-            aws ecs update-service \
-              --cluster dev-demo \
-              --service color-bg \
-              --task-definition $PREVIOUS_TASK_DEF_ARN \
-                --force-new-deployment
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/d70f0a12988b441c/1c0b6c4f03df115c \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117165153082600000008/80f810a54863ee18
