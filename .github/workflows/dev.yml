@@ -20,19 +20,19 @@ jobs:
           role-to-assume: arn:aws:iam::058264525554:role/github-actions-OpsXandao-pipeline
           aws-region: us-east-1
 
-      # 1° Direcionamos o tráfego de produção para green
-      - name: Switch production traffic to green target
-        run: |
-          aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/d70f0a12988b441c/b705a56a0e2d53e0 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117165153082600000008/80f810a54863ee18
-
-      # 2° Direcionamos o tráfego de teste para blue
+      # 1° Direcionamos o tráfego de teste para blue
       - name: Switch test traffic to blue target
         run: |
           aws elbv2 modify-listener \
             --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/d70f0a12988b441c/1c0b6c4f03df115c \
             --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117165153083800000009/d67ac5614fd7565c
+
+      # 2° Direcionamos o tráfego de produção para green
+      - name: Switch production traffic to green target
+        run: |
+          aws elbv2 modify-listener \
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/d70f0a12988b441c/b705a56a0e2d53e0 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117165153082600000008/80f810a54863ee18
 
       # Atualizamos o ambiente blue com a nova imagem
       - name: Update blue environment with new image
