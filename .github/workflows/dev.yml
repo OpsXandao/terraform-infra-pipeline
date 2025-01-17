@@ -24,15 +24,15 @@ jobs:
       - name: Switch production traffic to green target
         run: |
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d97cf97e97504e7/923103dc5780534b \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117144242967700000008/89dbd7b443eb2fa5
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/782f5f8cf7061b5f/bed6a1969ec18cd4 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011715290135070000000a/f3cd7cc63aa55795
 
       # 2° Direcionamos o tráfego de teste para blue
       - name: Switch test traffic to blue target
         run: |
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d97cf97e97504e7/e18adea149e60d8b \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117144242970300000009/87153ed918a40fb3
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/782f5f8cf7061b5f/324923a1df374d0b \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117152901349100000008/85d18b2e1ea59a06
 
       # Atualizamos o ambiente blue com a nova imagem
       - name: Update blue environment with new image
@@ -68,7 +68,7 @@ jobs:
             --cluster prd-demo \
             --services color-bg-prd
             
-       # Rollback if blue service is not stable
+      # Rollback if blue service is not stable
       - name: Rollback blue environment if failure
         if: failure()
         run: |
@@ -92,15 +92,15 @@ jobs:
         run: |
           # Porta 80 (produção) aponta para blue (nova imagem)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d97cf97e97504e7/923103dc5780534b \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117144242970300000009/87153ed918a40fb3
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/782f5f8cf7061b5f/bed6a1969ec18cd4 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117152901349100000008/85d18b2e1ea59a06
 
           # Porta 5001 (teste) aponta para green (imagem antiga)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/1d97cf97e97504e7/e18adea149e60d8b \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117144242967700000008/89dbd7b443eb2fa5
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/782f5f8cf7061b5f/324923a1df374d0b \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-2025011715290135070000000a/f3cd7cc63aa55795
 
-       # Step para aguardar 1 minuto antes de deployar o green
+      # Step para aguardar 1 minuto antes de deployar o green
       - name: Wait 1 minute before deploying green
         run: |
           echo "Waiting for 1 minute before deploying green..."
@@ -129,7 +129,7 @@ jobs:
           
           # Update the green service with new task definition
           aws ecs update-service \
-            --cluster prd-demo \
+            --cluster dev-demo \
             --service color-bg-prd \
             --task-definition $NEW_TASK_DEF_ARN \
             --force-new-deployment
@@ -140,13 +140,13 @@ jobs:
             echo "Rolling back green environment..."
             # Rollback to previous task definition for green
             PREVIOUS_TASK_DEF_ARN=$(aws ecs describe-services \
-              --cluster prd-demo \
-              --services color-bg-prd \
+              --cluster ev-demo \
+              --services color-bg-ev \
               --query 'services[0].taskDefinition' \
               --output text)
                   
             aws ecs update-service \
-              --cluster prd-demo \
+              --cluster dev-demo \
               --service color-bg-prd \
               --task-definition $PREVIOUS_TASK_DEF_ARN \
                 --force-new-deployment
