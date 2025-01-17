@@ -67,6 +67,24 @@ jobs:
           aws ecs wait services-stable \
             --cluster prd-demo \
             --services color-bg-prd
+            
+       # Rollback if blue service is not stable
+      - name: Rollback blue environment if failure
+        if: failure()
+        run: |
+          echo "Rolling back blue environment..."
+          # Rollback to previous task definition for blue
+          PREVIOUS_TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster prd-demo \
+            --services color-bg-prd \
+            --query 'services[0].taskDefinition' \
+            --output text)
+          
+          aws ecs update-service \
+            --cluster prd-demo \
+            --service color-bg-prd \
+            --task-definition $PREVIOUS_TASK_DEF_ARN \
+            --force-new-deployment
 
       # Após o deploy bem-sucedido, configuramos os listeners finais
       - name: Configure final traffic routing (on success)
@@ -81,3 +99,54 @@ jobs:
           aws elbv2 modify-listener \
             --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/195b6a941aa53658/3c60a6514b80e454 \
             --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117134219452400000008/a77b4dcb442c0c78
+
+       # Step para aguardar 1 minuto antes de deployar o green
+      - name: Wait 1 minute before deploying green
+        run: |
+          echo "Waiting for 1 minute before deploying green..."
+          sleep 60
+
+      # Atualizamos o ambiente green com a nova imagem 
+      - name: Update green environment with new image
+        run: |
+          # Get the current task definition
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition show-colors --query 'taskDefinition' --output json)
+          
+          # Create new task definition with updated image
+          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "03021914/blue-green:v3"')
+          
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --family show-colors \
+            --task-role-arn $(echo $TASK_DEFINITION | jq -r '.taskRoleArn') \
+            --execution-role-arn $(echo $TASK_DEFINITION | jq -r '.executionRoleArn') \
+            --network-mode bridge \
+            --container-definitions "$(echo $NEW_TASK_DEFINITION | jq '.containerDefinitions')" \
+            --cpu "$(echo $TASK_DEFINITION | jq -r '.cpu')" \
+            --memory "$(echo $TASK_DEFINITION | jq -r '.memory')" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          
+          # Update the green service with new task definition
+          aws ecs update-service \
+            --cluster prd-demo \
+            --service color-bg-prd \
+            --task-definition $NEW_TASK_DEF_ARN \
+            --force-new-deployment
+
+      - name: Rollback green environment if failure
+        if: failure()
+        run: |
+            echo "Rolling back green environment..."
+            # Rollback to previous task definition for green
+            PREVIOUS_TASK_DEF_ARN=$(aws ecs describe-services \
+              --cluster prd-demo \
+              --services color-bg-prd \
+              --query 'services[0].taskDefinition' \
+              --output text)
+                  
+            aws ecs update-service \
+              --cluster prd-demo \
+              --service color-bg-prd \
+              --task-definition $PREVIOUS_TASK_DEF_ARN \
+                --force-new-deployment
