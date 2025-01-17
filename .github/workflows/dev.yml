@@ -27,6 +27,7 @@ jobs:
             --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/55974490c260b975/0dfb7599e612aff4 \
             --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117161001320700000009/ca01235859545c59
 
+
       # 2° Direcionamos o tráfego de teste para blue
       - name: Switch test traffic to blue target
         run: |
@@ -99,12 +100,12 @@ jobs:
           aws elbv2 modify-listener \
             --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/55974490c260b975/954173e00ffe0178 \
             --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117161001320700000009/ca01235859545c59
-
-      # Step para aguardar 1 minuto antes de deployar o green
+     
+            # Step para aguardar 1 minuto antes de deployar o green
       - name: Wait 1 minute before deploying green
         run: |
           echo "Waiting for 1 minute before deploying green..."
-          sleep 60
+          sleep 5
 
       # Atualizamos o ambiente green com a nova imagem 
       - name: Update green environment with new image
