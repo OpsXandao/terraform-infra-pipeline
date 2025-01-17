@@ -24,15 +24,15 @@ jobs:
       - name: Switch production traffic to green target
         run: |
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/d4848edcf0dd06d3/741235383c939ecf \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117155235404600000008/9b8553a625426632
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/55974490c260b975/0dfb7599e612aff4 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117161001320700000009/ca01235859545c59
 
       # 2° Direcionamos o tráfego de teste para blue
       - name: Switch test traffic to blue target
         run: |
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/d4848edcf0dd06d3/25e4bb3e9a386a43 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117155235406500000009/933b2168ed986feb
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/55974490c260b975/954173e00ffe0178 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117161001319700000008/e4cda01b4ab10257
 
       # Atualizamos o ambiente blue com a nova imagem
       - name: Update blue environment with new image
@@ -92,13 +92,13 @@ jobs:
         run: |
           # Porta 80 (produção) aponta para blue (nova imagem)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/d4848edcf0dd06d3/741235383c939ecf \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117155235406500000009/933b2168ed986feb
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/55974490c260b975/0dfb7599e612aff4 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/main-20250117161001319700000008/e4cda01b4ab10257
 
           # Porta 5001 (teste) aponta para green (imagem antiga)
           aws elbv2 modify-listener \
-            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/d4848edcf0dd06d3/25e4bb3e9a386a43 \
-            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117155235404600000008/9b8553a625426632
+            --listener-arn arn:aws:elasticloadbalancing:us-east-1:058264525554:listener/app/demo-alb/55974490c260b975/954173e00ffe0178 \
+            --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:058264525554:targetgroup/green-20250117161001320700000009/ca01235859545c59
 
       # Step para aguardar 1 minuto antes de deployar o green
       - name: Wait 1 minute before deploying green
@@ -113,7 +113,7 @@ jobs:
           TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition show-colors --query 'taskDefinition' --output json)
           
           # Create new task definition with updated image
-          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "03021914/blue-green:v3"')
+          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "03021914/blue-green:v2"')
           
           # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
